@@ -67,7 +67,7 @@ jobs:
         run: npm run build -- --local .app-checkout
 
       - name: Install Chromium
-        run: npx --yes playwright@1.61.1 install --with-deps chromium
+        run: npx --yes playwright@$(node -p "require('playwright-core/package.json').version") install --with-deps chromium
 
       - name: Drive the rebuilt site
         run: npm run verify

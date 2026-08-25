@@ -45,10 +45,11 @@ jobs:
       - name: Install tooling
         run: npm install --no-audit --no-fund
 
-      # playwright-core ships no browser of its own; this is the matching
-      # Chromium for the pinned version.
+      # playwright-core ships no browser of its own, and each version wants a
+      # specific Chromium revision — so the version is read from the one that
+      # actually got installed rather than written out twice.
       - name: Install Chromium
-        run: npx --yes playwright@1.61.1 install --with-deps chromium
+        run: npx --yes playwright@$(node -p "require('playwright-core/package.json').version") install --with-deps chromium
 
       - name: Drive the built site
         run: npm run verify
