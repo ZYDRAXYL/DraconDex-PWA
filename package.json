@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "DraconDex as an installable web app — the Electron build for desktop browsers, the Flutter build for phones and tablets",
+  "homepage": "https://ldktc.github.io/PWA-DraconDex/",
   "license": "MIT",
   "type": "module",
   "repository": {
