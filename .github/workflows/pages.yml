@@ -22,6 +22,9 @@ on:
 
 permissions:
   contents: read
+  # configure-pages (below) turns Pages on for the repository on the first run.
+  pages: write
+  id-token: write
 
 # One deployment at a time; PR runs never deploy, so they get their own group
 # rather than queueing behind main.
@@ -58,6 +61,15 @@ jobs:
           path: .verify
           retention-days: 14
           if-no-files-found: warn
+
+      # enablement: true turns GitHub Pages on for the repository and sets its
+      # source to GitHub Actions, so the first successful run here is all the
+      # setup this site needs — no visit to Settings > Pages.
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
