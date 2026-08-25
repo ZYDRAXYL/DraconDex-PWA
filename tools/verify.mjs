@@ -158,6 +158,24 @@ try {
       await phone.screenshot({ path: path.join(shots, '09-mobile.png') });
       check('the Flutter engine starts', true);
       check('the Flutter lane loads without page errors', phoneErrors.length === 0, phoneErrors.slice(0, 2).join(' | '));
+
+      // The same build has to answer a tablet-shaped window with a different
+      // shell — vertical rail, hub panel, content pane (App-DraconDex
+      // docs/PWA.md §7) — instead of the phone's bottom bar stretched wide.
+      // A tablet is most of what visits the mobile lane on a big screen, so
+      // it is worth a pass of its own here.
+      //
+      // What is checked is what can honestly be checked from outside: the
+      // engine survives the resize, nothing errors, nothing 404s. The layout
+      // itself lives inside a canvas, and Flutter's accessibility DOM turns
+      // out not to expose the rail (measured: enabling semantics surfaces the
+      // content pane's nodes only), so asserting "the rail is there" from
+      // here would be asserting on a proxy that does not track the thing.
+      // The screenshot below is the artefact for that — read it.
+      await phone.setViewportSize({ width: 1194, height: 834 });
+      await phone.waitForTimeout(3000);
+      await phone.screenshot({ path: path.join(shots, '10-mobile-tablet.png') });
+      check('the Flutter lane survives a tablet viewport', phoneErrors.length === 0, phoneErrors.slice(0, 2).join(' | '));
       await phone.close();
     }
   }
