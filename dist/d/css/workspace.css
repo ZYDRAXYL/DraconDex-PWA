@@ -1,0 +1,143 @@
+/* Workspace styles (Plan part2 #New Workspace) — chrome overrides layered
+   on top of body[data-workspace], set early by index.html's splash script
+   and authoritatively by applyWorkspaceStyle() (core/boot.js). Loaded last
+   in the cascade so its overrides always win over the fixed chrome rules
+   in nav-hub.css/layout.css/titlebar.css. Wyvern, Dragon, and the Setting
+   window's own "Workspace Style" picker mockups all land in this one file
+   per the "one file per system" convention now that a workspace-style
+   system exists at all. */
+
+/* Wyvern: no nav-rail, no left panel/Nexus-Nest tree, no split-layout
+   picker, no legacy tab strip — mirrors .popup-mode's hide-list
+   (titlebar.css) except #settings-menu-wrap stays visible (the only way
+   back into Setting to switch styles again) and #status-bar stays visible
+   (still useful footer info for a newcomer, unlike a focused popup tab). */
+body[data-workspace="wyvern"] #nav-sidebar,
+body[data-workspace="wyvern"] #left-panel,
+body[data-workspace="wyvern"] #left-panel-resize,
+body[data-workspace="wyvern"] #builder-tabs,
+body[data-workspace="wyvern"] #layout-menu-wrap,
+body[data-workspace="wyvern"] #hub-toggle-btn,
+body[data-workspace="wyvern"] #titlebar-vault{display:none}
+
+#workspace-toolbar{
+	/* display:flex was missing here (Process5 part1 fix) — every other rule
+	   on this element (flex-direction/align-items/gap) was a silent no-op
+	   without it, so the toolbar was laying its buttons out via plain block
+	   flow the whole time rather than the flex column it was written for;
+	   only visually forgiving in the vertical case (block-level buttons
+	   still stack), but broke outright once horizontal mode (below) needed
+	   a real flex row. #nav-sidebar (nav-hub.css) already had this. */
+	display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;
+	width:var(--nav);flex-shrink:0;border-right:1px solid var(--border);background:var(--surface);
+}
+#workspace-toolbar.hidden{display:none}
+.wyvern-toolbar-sep{width:70%;height:1px;background:var(--border);margin:2px 0}
+
+/* Horizontal nav orientation (Plan process5 part1) — #nav-sidebar (Drake/
+   Dragon) or #workspace-toolbar (Wyvern) gets reparented by
+   applyNavOrientation() (core/boot.js) from its normal #app-row slot into
+   #nav-toolbar-h (index.html), a slim strip directly under the title bar.
+   Same element/markup/onclick handlers throughout — this is a pure layout
+   swap, column -> row, nothing re-renders. #nav-toolbar-h carries no fixed
+   height of its own, so it collapses to 0 whenever nothing has been
+   reparented into it (vertical mode, the common case).
+   ID-based compound selectors below (not a shared class) deliberately —
+   #nav-sidebar/#workspace-toolbar's own base column-layout rules are ID
+   selectors too, so only an equal-or-higher-specificity ID selector can
+   reliably outrank them regardless of file/rule order. */
+#nav-toolbar-h{display:flex;flex-shrink:0;overflow:hidden}
+/* Process 6 part 1: #nav-toolbar-h used to just be a row with the reparented
+   nav element as its only real child, sized to 44px by that element's own
+   fixed height — the mount itself never stretched to the window, and there
+   was no resize lever (#nav-sidebar-resize stays behind in #app, hidden
+   outright below). Switching to a column stacks the nav row above its own
+   resize handle (#nav-toolbar-h-resize, index.html — a static child that
+   survives applyNavOrientation()'s reparenting since that only ever
+   appendChild()s the nav element, never clears the mount) so dragging it
+   changes --navh the same way #nav-sidebar-resize drives --nav vertically. */
+body[data-nav-orientation="horizontal"] #nav-toolbar-h{flex-direction:column}
+body[data-nav-orientation="vertical"] #nav-toolbar-h-resize{display:none}
+body[data-nav-orientation="horizontal"] #title-left-zone{width:var(--sidebar)}
+body[data-nav-orientation="horizontal"] #nav-sidebar-resize{display:none}
+body[data-nav-orientation="horizontal"] #nav-sidebar,
+body[data-nav-orientation="horizontal"] #workspace-toolbar{
+	flex-direction:row;width:100%;height:var(--navh,44px);padding:0 10px;gap:6px;
+	border-right:none;border-bottom:1px solid var(--border);
+}
+body[data-nav-orientation="horizontal"] #nav-sidebar-spacer,
+body[data-nav-orientation="horizontal"] .nav-logo-btn{display:none}
+body[data-nav-orientation="horizontal"] #nav-sidebar .nav-btn,
+body[data-nav-orientation="horizontal"] #workspace-toolbar .nav-btn{
+	width:auto;height:32px;aspect-ratio:auto;padding:0 10px;gap:6px;justify-content:center;
+}
+body[data-nav-orientation="horizontal"] .wyvern-toolbar-sep{width:1px;height:24px;margin:0 2px}
+/* .rail-sep (nav-hub.css) is a horizontal rule meant to divide a column of
+   STACKED buttons — in a horizontal row it needs to divide left-to-right
+   instead, same section boundary (Hub tools vs. pinned modules) just
+   rotated onto the other axis. */
+body[data-nav-orientation="horizontal"] .rail-sep{width:0;height:60%;border-top:none;border-left:1px solid var(--border);margin:0 5px}
+/* The active-module indicator bar (nav-hub.css .nav-btn.active::after) is
+   positioned for a vertical column (a bar on the button's left edge) — in a
+   horizontal row that reads as floating in empty space instead of marking
+   the selected button, so it moves to the bottom edge here to match the
+   row's own axis. */
+body[data-nav-orientation="horizontal"] .nav-btn.active::after{
+	left:22%;right:22%;top:auto;bottom:-4px;width:auto;height:3px;
+}
+/* Button display mode (icon/label/both) — only meaningful in horizontal
+   orientation; vertical mode keeps its existing width-driven .nav-expanded
+   behavior (nav-hub.css) untouched. 'both' matches the global .nav-label
+   default already being display:none, so only 'label' needs to force it
+   visible while also hiding the icon; 'icon' is the existing global default
+   and needs no override. */
+body[data-nav-orientation="horizontal"][data-nav-display="both"] #nav-sidebar .nav-label,
+body[data-nav-orientation="horizontal"][data-nav-display="both"] #workspace-toolbar .nav-label,
+body[data-nav-orientation="horizontal"][data-nav-display="label"] #nav-sidebar .nav-label,
+body[data-nav-orientation="horizontal"][data-nav-display="label"] #workspace-toolbar .nav-label{
+	display:inline-block;
+}
+body[data-nav-orientation="horizontal"][data-nav-display="label"] #nav-sidebar .nav-btn .icon,
+body[data-nav-orientation="horizontal"][data-nav-display="label"] #workspace-toolbar .nav-btn .icon,
+body[data-nav-orientation="horizontal"][data-nav-display="label"] #nav-sidebar .nav-btn .kicon-img-icon{
+	display:none;
+}
+
+/* Wyvern drill-down breadcrumb (replaces the docked Nest tree entirely).
+   Reused verbatim by Dragon's own breadcrumb below — same markup/classes,
+   only the board underneath it differs. */
+.wyvern-breadcrumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:calc(13px * var(--fsc,1))}
+.wyvern-crumb{cursor:pointer;color:var(--t2)}
+.wyvern-crumb:last-child{color:var(--t1);font-weight:600;cursor:default}
+.wyvern-crumb:hover:not(:last-child){color:var(--accentH)}
+.wyvern-crumb-sep{color:var(--t3)}
+
+/* Dragon: keeps nav-sidebar/hub-toggle/titlebar-vault/status-bar (per
+   Plan.md's "แสดง tool ตามเดิม") — only the left-panel Nest tree and the
+   Builder's tab strip/split-layout picker hide, replaced by the freeform
+   board below. */
+body[data-workspace="dragon"] #left-panel,
+body[data-workspace="dragon"] #left-panel-resize,
+body[data-workspace="dragon"] #builder-tabs,
+body[data-workspace="dragon"] #layout-menu-wrap{display:none}
+
+/* Dragon's freeform board — a scrollable viewport (native scroll, no
+   custom pan/zoom for this first version — see Plan.md's Dragon section)
+   over an absolutely-sized stage sized to fit every card's position. */
+.dragon-board{position:relative;width:100%;height:560px;overflow:auto;
+	background:var(--raised);border:1px solid var(--border);border-radius:var(--r);
+	background-image:linear-gradient(rgba(90,90,114,.14) 1px,transparent 1px),linear-gradient(90deg,rgba(90,90,114,.14) 1px,transparent 1px);
+	background-size:24px 24px;
+}
+.dragon-card{position:absolute;width:170px;cursor:grab}
+.dragon-card.dragging{cursor:grabbing;z-index:5;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+
+/* Setting window → Workspace → Workspace Style page (core/workspace-style.js)
+   — CSS-drawn wireframe mockups reusing the Theme page's .prefs-theme-cell/
+   -grid/-name/-check idiom for the cards themselves; only these small
+   preview-block rules are new. */
+.wsp-cell-preview{display:flex;gap:3px;height:56px;padding:4px;margin-bottom:6px;
+	border:1px solid var(--border);border-radius:var(--rs);overflow:hidden;background:var(--bg)}
+.wsp-blk{border-radius:2px}
+.wsp-board-mini{position:relative;flex:1;background:var(--bg)}
+.wsp-dot{position:absolute;width:12px;height:8px;border-radius:2px;background:var(--accent);opacity:.55}

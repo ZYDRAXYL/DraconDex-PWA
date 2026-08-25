@@ -1,0 +1,81 @@
+name: Verify and deploy
+
+# dist/ is committed (this repo holds the built site, not the app's source), so
+# a deploy is just "publish what is in the tree". The verify job below is what
+# keeps that honest: it drives the committed site in a real browser and refuses
+# to deploy a build that cannot create a Nexus and read it back.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dist/**'
+      - '.github/workflows/pages.yml'
+  pull_request:
+    paths:
+      - 'dist/**'
+      - 'tools/**'
+      - 'shim/**'
+  # Lets a branch be published on purpose — used for the first deploy, before
+  # anything has landed on main.
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# One deployment at a time; PR runs never deploy, so they get their own group
+# rather than queueing behind main.
+concurrency:
+  group: ${{ github.ref == 'refs/heads/main' && 'pages' || format('pages-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install tooling
+        run: npm install --no-audit --no-fund
+
+      # playwright-core ships no browser of its own; this is the matching
+      # Chromium for the pinned version.
+      - name: Install Chromium
+        run: npx --yes playwright@1.61.1 install --with-deps chromium
+
+      - name: Drive the built site
+        run: npm run verify
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: verify-screenshots
+          path: .verify
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

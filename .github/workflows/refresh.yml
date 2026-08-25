@@ -1,0 +1,89 @@
+name: Rebuild from App-DraconDex
+
+# Rebuilds both lanes against the current App-DraconDex and opens a PR with the
+# result. This is the "the app moved on, catch the PWA up" button.
+#
+# It needs one secret, because App-DraconDex is a private repository:
+#
+#   APP_SOURCE_TOKEN — a token that can read LDKTC/App-DraconDex
+#
+# Without it the checkout step fails immediately and says so, rather than
+# building something stale. The same rebuild can always be done locally with
+# `npm run build -- --local ../App-DraconDex`, which needs no token at all.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'App-DraconDex ref to build from'
+        default: 'main'
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check the source token is present
+        run: |
+          if [ -z "${{ secrets.APP_SOURCE_TOKEN }}" ]; then
+            echo "::error::APP_SOURCE_TOKEN is not set — this workflow cannot read the private App-DraconDex repository."
+            exit 1
+          fi
+
+      - name: Check out App-DraconDex
+        uses: actions/checkout@v5
+        with:
+          repository: LDKTC/App-DraconDex
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.APP_SOURCE_TOKEN }}
+          path: .app-checkout
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The mobile lane is the Flutter web target of the same lib/ that ships on
+      # Android and iOS; the version here tracks App-DraconDex's own web build.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          channel: stable
+          cache: true
+
+      - name: Install tooling
+        run: npm install --no-audit --no-fund
+
+      - name: Build both lanes
+        run: npm run build -- --local .app-checkout
+
+      - name: Install Chromium
+        run: npx --yes playwright@1.61.1 install --with-deps chromium
+
+      - name: Drive the rebuilt site
+        run: npm run verify
+
+      - name: Open a pull request with the rebuilt site
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: rebuild/app-${{ inputs.ref }}
+          title: 'Rebuild the PWA from App-DraconDex ${{ inputs.ref }}'
+          body: |
+            Rebuilt `dist/` from `LDKTC/App-DraconDex@${{ inputs.ref }}`.
+
+            Both lanes were driven in a real browser by `npm run verify` before
+            this PR was opened — see the workflow run for the screenshots.
+          commit-message: 'Rebuild the PWA from App-DraconDex ${{ inputs.ref }}'
+          add-paths: |
+            dist
+            app-source.json
+          delete-branch: true

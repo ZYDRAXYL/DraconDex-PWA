@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050506">
+<title>DraconDex</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.png">
+<link rel="apple-touch-icon" href="icons/Icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="DraconDex">
+<style>
+  :root{color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#050506;color:#e7e7ea;
+       font-family:"Noto Sans Thai","Segoe UI",system-ui,-apple-system,sans-serif;padding:24px}
+  .wrap{width:100%;max-width:560px;text-align:center}
+  .logo{width:96px;height:96px;object-fit:contain;margin-bottom:18px}
+  h1{font-size:1.5rem;margin:0 0 6px;font-weight:650;letter-spacing:.02em}
+  p{margin:0 0 28px;color:#9a9aa6;font-size:.94rem;line-height:1.6}
+  .lanes{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  a.lane{display:block;padding:18px 20px;border:1px solid #26262e;border-radius:14px;background:#0d0d12;
+         color:inherit;text-decoration:none;text-align:left;transition:border-color .15s,background .15s}
+  a.lane:hover,a.lane:focus-visible{border-color:#6366f1;background:#12121a;outline:none}
+  .lane b{display:block;font-size:1rem;margin-bottom:4px}
+  .lane span{color:#8b8b98;font-size:.82rem;line-height:1.5}
+  .note{margin-top:26px;color:#6b6b78;font-size:.76rem}
+  .note code{color:#8b8b98}
+  #status{margin-bottom:22px;color:#8b8b98;font-size:.85rem;min-height:1.2em}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="logo" src="src/assets/brand/DraconDex_WhiteOut.png" alt="DraconDex">
+  <h1>DraconDex</h1>
+  <p>เลือกเวอร์ชันที่เหมาะกับอุปกรณ์ของคุณ — ข้อมูลทั้งหมดเก็บอยู่ในเครื่องนี้เท่านั้น</p>
+  <div id="status"></div>
+  <div class="lanes">
+    <a class="lane" href="d/" data-lane="d"><b>เดสก์ท็อป</b><span>หน้าจอใหญ่ คีย์บอร์ด เมาส์ — เวอร์ชันเดียวกับแอป Windows / macOS</span></a>
+    <a class="lane" href="m/" data-lane="m"><b>มือถือ / แท็บเล็ต</b><span>ทัชสกรีน — เวอร์ชันเดียวกับแอป iOS / Android</span></a>
+  </div>
+  <div class="note">DraconDex 4.12.0 · เปิดหน้านี้ด้วย <code>?lane=choose</code> เพื่อเลือกใหม่ได้เสมอ</div>
+</div>
+<script>
+(function(){
+  var KEY = 'ddx-lane';
+  var params = new URLSearchParams(location.search);
+  var asked = params.get('lane');
+
+  // Touch-first and small — the same two questions the Flutter build itself is
+  // designed around. UA sniffing only as a tiebreaker for iPadOS, which
+  // reports itself as a desktop Safari but is a tablet by every other measure.
+  function detect(){
+    var ua = navigator.userAgent;
+    var iPadOS = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+    var mobileUA = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/.test(ua) || iPadOS;
+    var coarse = matchMedia('(pointer: coarse)').matches;
+    var narrow = Math.min(screen.width, screen.height) < 900;
+    return (mobileUA || (coarse && narrow)) ? 'm' : 'd';
+  }
+
+  function go(lane){
+    try { localStorage.setItem(KEY, lane); } catch (e) {}
+    location.replace(lane + '/');
+  }
+
+  document.querySelectorAll('a.lane').forEach(function(a){
+    a.addEventListener('click', function(e){ e.preventDefault(); go(a.dataset.lane); });
+  });
+
+  if (asked === 'choose') return;
+  if (asked === 'd' || asked === 'm') { go(asked); return; }
+
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  var lane = (saved === 'd' || saved === 'm') ? saved : detect();
+  document.getElementById('status').textContent = 'กำลังเปิด' + (lane === 'm' ? 'เวอร์ชันมือถือ' : 'เวอร์ชันเดสก์ท็อป') + '…';
+  // A tick of daylight, so this page is visible (and its links usable) if a
+  // lane ever fails to load.
+  setTimeout(function(){ go(lane); }, 60);
+})();
+</script>
+</body>
+</html>

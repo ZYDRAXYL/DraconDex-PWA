@@ -1,0 +1,9 @@
+node_modules/
+# The DraconDex source this site is built from — fetched, never committed.
+# See tools/fetch-app.mjs and app-source.json.
+.app-src/
+.app-clone/
+# Screenshots and profiles from tools/verify.mjs.
+.verify/
+*.log
+.DS_Store

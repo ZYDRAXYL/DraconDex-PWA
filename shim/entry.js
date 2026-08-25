@@ -1,0 +1,157 @@
+'use strict';
+// The desktop lane's bridge: everything that, on the desktop, is the Electron
+// main process — running inside the page instead.
+//
+//   renderer (unchanged)  ->  window.api (the real preload.js)
+//                          ->  __ddxInvoke
+//                          ->  the real main.js IPC handlers
+//                          ->  the real src/db/** on sql.js + a virtual disk
+//
+// Nothing of DraconDex's own code is edited on the way in. The renderer, the
+// preload contract and the whole data layer are the files from
+// App-DraconDex; only the four things a browser genuinely cannot provide are
+// swapped out underneath them (Electron's shell, the filesystem, sqlite's
+// bindings, and window management).
+import vfs, { hydrate, flushNow } from './vfs.js';
+// window.api, built by the app's own preload.js against the contextBridge and
+// ipcRenderer stubs in shim/electron.js. It only captures __ddxInvoke lazily,
+// at call time, so it is safe for this to be evaluated before the bridge below
+// exists — and it means window.api is defined before the first renderer script
+// parses, which is the ordering the app assumes.
+import '../.app-src/electron/preload.js';
+import { __setQuota } from './fs.js';
+import { ipcHandlers, dialog } from './electron.js';
+import { initSqlite, persistAll } from './sqlite.js';
+import { installDialogs, drainDownloads } from './dialogs.js';
+
+// A bare URL is not a state the app has: on the desktop, main.js decides
+// between the Welcome window and a vault window and passes the answer as a
+// query string. The page has to make that same choice for itself, before any
+// renderer script reads location.search.
+const params = new URLSearchParams(location.search);
+if (!params.has('welcome') && !params.has('nexus')) {
+  params.set('welcome', '1');
+  history.replaceState(null, '', `${location.pathname}?${params}`);
+}
+const bootNexusId = Number(new URLSearchParams(location.search).get('nexus')) || null;
+
+const withParams = (next) => {
+  const url = new URL(location.href);
+  url.search = new URLSearchParams(next).toString();
+  return url.toString();
+};
+
+// Window management, which in a browser is navigation. These channels are
+// registered by main.js like any other, so they are intercepted by channel
+// name rather than by patching main.js.
+const OVERRIDES = {
+  'window:minimize': () => {},
+  'window:toggleMaximize': async () => {
+    // The closest real equivalent, and it needs the click's user gesture,
+    // which is still live by the time this runs.
+    try {
+      if (document.fullscreenElement) { await document.exitFullscreen(); return false; }
+      await document.documentElement.requestFullscreen();
+      return true;
+    } catch (_) { return false; }
+  },
+  'window:close': async () => { await persistAll(); window.close(); },
+  'window:getId': () => 1,
+  'window:openNexus': async (nexusId) => { await persistAll(); window.open(withParams({ nexus: nexusId }), '_blank'); },
+  'window:openNexusReplace': async (nexusId) => { await persistAll(); location.href = withParams({ nexus: nexusId }); },
+  'window:openWelcome': async () => { await persistAll(); location.href = withParams({ welcome: '1' }); },
+  'window:openBuilderTab': async (nexusId, tabKey) => {
+    await persistAll();
+    window.open(withParams({ nexus: nexusId, tab: tabKey, popup: '1' }), '_blank');
+  },
+  // Relaying a tab back needs a second live window to send to; there is no
+  // cross-tab IPC here, and the renderer already handles "no main window".
+  'window:moveTabToMain': () => false,
+
+  // The desktop build checks GitHub for a newer installer to download. A page
+  // has no installer to replace — the service worker already fetches the new
+  // build on the next load — so this answers "you are current" rather than
+  // reaching for a release feed that is about Windows binaries.
+  'update:check': () => ({ ok: true, available: false, current: globalThis.__DDX_VERSION__ || '' }),
+};
+
+let markReady;
+const ready = new Promise((resolve) => { markReady = resolve; });
+let bootError = null;
+
+// Every call the renderer makes lands here. Calls made while the data layer is
+// still booting (the renderer starts querying inside its first frame) simply
+// wait for it — window.api itself exists from the first line of the page.
+globalThis.__ddxInvoke = async (channel, args) => {
+  await ready;
+  if (bootError) throw bootError;
+  const override = OVERRIDES[channel];
+  if (override) return override(...args);
+  const handler = ipcHandlers.get(channel);
+  if (!handler) throw new Error(`no IPC handler for ${channel}`);
+  try {
+    const result = await handler({ sender: null }, ...args);
+    return sanitize(result);
+  } finally {
+    // A handler that wrote to a save-dialog path has produced a file the user
+    // asked for; hand it over while their click is still recent enough for the
+    // browser to allow the download.
+    drainDownloads();
+    schedulePersist();
+  }
+};
+
+// Structured clone can't carry a BigInt rowid (node-sqlite3-wasm's own type)
+// and the renderer only ever reads plain JSON out of these, so normalise once
+// here — the same thing the Electron IPC boundary does implicitly.
+function sanitize(value) {
+  if (value === undefined || value === null) return value;
+  if (typeof value === 'bigint') return Number(value);
+  if (typeof value !== 'object') return value;
+  if (value instanceof Uint8Array) return value;
+  if (Array.isArray(value)) return value.map(sanitize);
+  const out = {};
+  for (const [k, v] of Object.entries(value)) out[k] = sanitize(v);
+  return out;
+}
+
+let persistTimer = null;
+function schedulePersist() {
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => { persistTimer = null; persistAll(); }, 300);
+}
+
+async function boot() {
+  await hydrate();
+  try {
+    const est = await navigator.storage?.estimate?.();
+    if (est?.quota) __setQuota({ total: est.quota, used: est.usage || 0 });
+  } catch (_) { /* keep the default estimate in shim/fs.js */ }
+
+  // vendor/ sits next to the page that loads this bundle.
+  await initSqlite((file) => new URL(`vendor/${file}`, document.baseURI).href);
+  installDialogs(dialog);
+
+  // Registers every IPC handler. Imported here rather than at the top of the
+  // file so that it runs AFTER the virtual disk and sqlite are ready — its
+  // module body touches both.
+  await import('../.app-src/electron/main.js');
+
+  if (bootNexusId) {
+    // The window -> vault mapping main.js's createWindow() would have made.
+    // Without it every vault-scoped handler throws "no active vault"
+    // (src/db/vault-context.js fails closed on purpose).
+    const { windowNexus } = await import('../.app-src/electron/src/db/vault-context.js');
+    windowNexus.set(1, bootNexusId);
+  }
+}
+
+boot().then(markReady, (err) => {
+  console.error('[dracondex] data layer failed to start:', err);
+  bootError = err;
+  markReady();
+});
+
+addEventListener('pagehide', () => { persistAll(); flushNow(); });
+
+globalThis.__ddx = { vfs, persistAll, ipcHandlers, ready };

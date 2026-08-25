@@ -1,0 +1,26 @@
+{
+  "name": "pwa-dracondex",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DraconDex as an installable web app — the Electron build for desktop browsers, the Flutter build for phones and tablets",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LDKTC/PWA-DraconDex.git"
+  },
+  "scripts": {
+    "fetch": "node tools/fetch-app.mjs",
+    "build": "node tools/build.mjs",
+    "build:desktop": "node tools/build-desktop.mjs",
+    "build:mobile": "node tools/build-mobile.mjs",
+    "build:shell": "node tools/build-shell.mjs",
+    "verify": "node tools/verify.mjs",
+    "serve": "node tools/serve.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.61.1",
+    "sql.js": "^1.14.2"
+  }
+}
