@@ -191,7 +191,7 @@ function goToNexusNestHub() {
   // last drilled — matches Drake's own "home" button (clears state, doesn't
   // remember position). Dragon gets the same treatment.
   S.wyvernBrowsePath = [];
-  S.dragonBrowsePath = [];
+  S.dragonBrowsePath = []; S.dragonSearch = '';
   renderNexusHome();
 }
 
