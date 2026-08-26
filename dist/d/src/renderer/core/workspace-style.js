@@ -23,10 +23,9 @@ function workspaceStylePreviewHtml(style) {
   </div>`;
   if (style === 'dragon') return `<div class="wsp-cell-preview">
     <i class="wsp-blk" style="width:8px;background:var(--surface)"></i>
-    <div class="wsp-board-mini">
-      <i class="wsp-dot" style="left:8px;top:6px"></i>
-      <i class="wsp-dot" style="left:30px;top:22px"></i>
-      <i class="wsp-dot" style="left:16px;top:36px"></i>
+    <div class="wsp-erp-mini">
+      <div class="wsp-erp-kpis"><i></i><i></i><i></i></div>
+      <div class="wsp-erp-tiles"><i></i><i></i><i></i><i></i></div>
     </div>
   </div>`;
   return `<div class="wsp-cell-preview">

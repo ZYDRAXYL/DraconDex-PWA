@@ -112,6 +112,10 @@ const WORKSPACE_STYLE_OPTIONS = ['drake', 'wyvern', 'dragon'];
 // wyvern.js) — user-overridable per style from Setting -> Workspace, see
 // applyNavOrientation() (core/boot.js).
 const NAV_ORIENTATION_DEFAULT = { drake: 'vertical', wyvern: 'horizontal', dragon: 'vertical' };
+// Dragon's ERP console (dragon.js) renders the level either as grouped app
+// tiles or as a flat record table — a persisted per-user preference, same
+// tier as the nav-orientation/display prefs above.
+const DRAGON_VIEW_OPTIONS = ['tiles', 'table'];
 // Process 7 part 1: the "advanced" animation-speed preset — a fixed set of
 // durations (not a free-form scrubber) matching the Workspace page's other
 // preset-button controls (nav orientation/display mode).
@@ -213,16 +217,16 @@ function loadUiSettings(){
   // dragging, core/ui.js applyNavRailWidth) to stay on regardless of the
   // dragged rail width, mirroring horizontal's own display-mode setting.
   const navVerticalAlwaysLabel = saved.navVerticalAlwaysLabel === true;
-  // Dragon's drag-to-arrange positions ({nexusId: {parentKey: {moduleId: {x,y}}}})
-  // — client-only, same tier as the other UI-chrome prefs above (see Plan
-  // part2 #New Workspace's Dragon section for why this isn't DB-backed).
-  const dragonLayout = saved.dragonLayout && typeof saved.dragonLayout === 'object' ? saved.dragonLayout : {};
+  // Dragon's ERP console view mode — 'tiles' (grouped app launchpad) or
+  // 'table' (flat record list). Replaces the freeform board's old
+  // dragonLayout position map, which no longer has anything to position.
+  const dragonView = DRAGON_VIEW_OPTIONS.includes(saved.dragonView) ? saved.dragonView : 'tiles';
   // Process 7 part 1: toggle animations (hub accordion, nest module-list
   // expand/collapse, module inspector) — default ON per Plan.md; the speed
   // preset is the "advanced" sub-setting, only meaningful while enabled.
   const animationsEnabled = saved.animationsEnabled !== false;
   const animationSpeed = ['fast', 'normal', 'slow'].includes(saved.animationSpeed) ? saved.animationSpeed : 'normal';
-  return { theme: theme2, language, size, nameMode, fontScale, customThemes, nestShowItems, nestShowMajorIcon, nestShowMinorIcon, nestSignatureMode, quickExtras, navToggles, hubQuickToggles, statusToggles, workspaceStyle, navOrientation, navHorizontalDisplay, navVerticalAlwaysLabel, dragonLayout, animationsEnabled, animationSpeed };
+  return { theme: theme2, language, size, nameMode, fontScale, customThemes, nestShowItems, nestShowMajorIcon, nestShowMinorIcon, nestSignatureMode, quickExtras, navToggles, hubQuickToggles, statusToggles, workspaceStyle, navOrientation, navHorizontalDisplay, navVerticalAlwaysLabel, dragonView, animationsEnabled, animationSpeed };
 }
 
 // Kind display names (Phase 22): the Unique set (KIND_LABEL, locale-
@@ -291,6 +295,10 @@ const S = {
   // kept as a separate array since the two styles' boards render
   // independently and a user could in theory flip styles mid-session.
   dragonBrowsePath:[],
+  // Dragon's ERP console search box — filters only the level currently
+  // being browsed, cleared on every drill in/out (dragon.js). Session-only,
+  // like the browse path above it.
+  dragonSearch:'',
   // Setting window "Workspace Style" page — the card the user has clicked
   // but not yet committed via "Apply & Restart" (core/workspace-style.js).
   // Session-only UI state, not the persisted S.settings.workspaceStyle.

@@ -286,8 +286,5 @@ function runBuilderMounts() {
     mountSketcherExtras();
   }
   if (S.activeModuleNode?.kind === 'designer' && typeof mountDesignerBoard === 'function') mountDesignerBoard();
-  // Dragon (Plan part2 #New Workspace) — self-guards on workspaceStyle/
-  // dragonSomethingOpen internally, same as the sagehut check above.
-  if (typeof mountDragonBoard === 'function') mountDragonBoard();
 }
 

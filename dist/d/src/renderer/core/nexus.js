@@ -131,7 +131,7 @@ function clearWorkspaceTabs() {
   S.moduleTree = []; S.activeModuleNode = null; S.moduleTabs = [];
   S.builder = null; S.filePreview = null; S.sageHut = null; S.sageHutCache = null; S.importDockPage = false; S.importFiles = undefined;
   S.wyvernBrowsePath = [];
-  S.dragonBrowsePath = [];
+  S.dragonBrowsePath = []; S.dragonSearch = '';
   if (typeof invalidateDisplayImages === 'function') invalidateDisplayImages();
   q('#main-inner')?.querySelectorAll(':scope > .bpane').forEach(el => el.remove());
   renderProjectTabs();
