@@ -2,7 +2,7 @@
   "name": "DraconDex",
   "short_name": "DraconDex",
   "description": "จัดการข้อมูลโลกในนิยาย — ตัวละคร สถานที่ ไทม์ไลน์ ความสัมพันธ์ และโน้ต",
-  "id": "/PWA-DraconDex/",
+  "id": "/DraconDex-PWA/",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

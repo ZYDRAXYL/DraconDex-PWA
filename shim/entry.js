@@ -9,7 +9,7 @@
 //
 // Nothing of DraconDex's own code is edited on the way in. The renderer, the
 // preload contract and the whole data layer are the files from
-// App-DraconDex; only the four things a browser genuinely cannot provide are
+// DraconDex-APP; only the four things a browser genuinely cannot provide are
 // swapped out underneath them (Electron's shell, the filesystem, sqlite's
 // bindings, and window management).
 import vfs, { hydrate, flushNow } from './vfs.js';

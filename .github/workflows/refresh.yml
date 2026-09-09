@@ -1,21 +1,21 @@
-name: Rebuild from App-DraconDex
+name: Rebuild from DraconDex-APP
 
-# Rebuilds both lanes against the current App-DraconDex and opens a PR with the
+# Rebuilds both lanes against the current DraconDex-APP and opens a PR with the
 # result. This is the "the app moved on, catch the PWA up" button.
 #
-# It needs one secret, because App-DraconDex is a private repository:
+# It needs one secret, because DraconDex-APP is a private repository:
 #
-#   APP_SOURCE_TOKEN — a token that can read LDKTC/App-DraconDex
+#   APP_SOURCE_TOKEN — a token that can read ZYDRAXYL/DraconDex-APP
 #
 # Without it the checkout step fails immediately and says so, rather than
 # building something stale. The same rebuild can always be done locally with
-# `npm run build -- --local ../App-DraconDex`, which needs no token at all.
+# `npm run build -- --local ../DraconDex-APP`, which needs no token at all.
 
 on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'App-DraconDex ref to build from'
+        description: 'DraconDex-APP ref to build from'
         default: 'main'
         required: false
 
@@ -36,14 +36,14 @@ jobs:
       - name: Check the source token is present
         run: |
           if [ -z "${{ secrets.APP_SOURCE_TOKEN }}" ]; then
-            echo "::error::APP_SOURCE_TOKEN is not set — this workflow cannot read the private App-DraconDex repository."
+            echo "::error::APP_SOURCE_TOKEN is not set — this workflow cannot read the private DraconDex-APP repository."
             exit 1
           fi
 
-      - name: Check out App-DraconDex
+      - name: Check out DraconDex-APP
         uses: actions/checkout@v5
         with:
-          repository: LDKTC/App-DraconDex
+          repository: ZYDRAXYL/DraconDex-APP
           ref: ${{ inputs.ref }}
           token: ${{ secrets.APP_SOURCE_TOKEN }}
           path: .app-checkout
@@ -53,7 +53,7 @@ jobs:
           node-version: '22'
 
       # The mobile lane is the Flutter web target of the same lib/ that ships on
-      # Android and iOS; the version here tracks App-DraconDex's own web build.
+      # Android and iOS; the version here tracks DraconDex-APP's own web build.
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.4'
@@ -76,13 +76,13 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           branch: rebuild/app-${{ inputs.ref }}
-          title: 'Rebuild the PWA from App-DraconDex ${{ inputs.ref }}'
+          title: 'Rebuild the PWA from DraconDex-APP ${{ inputs.ref }}'
           body: |
-            Rebuilt `dist/` from `LDKTC/App-DraconDex@${{ inputs.ref }}`.
+            Rebuilt `dist/` from `ZYDRAXYL/DraconDex-APP@${{ inputs.ref }}`.
 
             Both lanes were driven in a real browser by `npm run verify` before
             this PR was opened — see the workflow run for the screenshots.
-          commit-message: 'Rebuild the PWA from App-DraconDex ${{ inputs.ref }}'
+          commit-message: 'Rebuild the PWA from DraconDex-APP ${{ inputs.ref }}'
           add-paths: |
             dist
             app-source.json

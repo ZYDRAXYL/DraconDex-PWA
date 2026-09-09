@@ -2,13 +2,13 @@
 // The mobile lane: DraconDex's Flutter front-end, built for the web.
 //
 // This is the same lib/ that ships as the Android and iOS app — the web is its
-// third build target, not a port (see docs/PWA.md in App-DraconDex). Two files
+// third build target, not a port (see docs/PWA.md in DraconDex-APP). Two files
 // it needs at runtime, sqlite3.wasm and sqflite_sw.js, are resolved by a real
 // Dart toolchain run rather than checked in anywhere, so `dart run
 // sqflite_common_ffi_web:setup` runs here before every build.
 //
 //   node tools/build-mobile.mjs                  # build into dist/m
-//   BASE_PATH=/PWA-DraconDex/ node tools/...     # where the site is served from
+//   BASE_PATH=/DraconDex-PWA/ node tools/...     # where the site is served from
 //
 // Without a Flutter SDK on PATH this exits 0 and leaves any existing dist/m
 // alone: the desktop lane must stay buildable on a machine that has never seen
@@ -23,7 +23,7 @@ const appSrc = path.join(root, '.app-src');
 const flutterDir = path.join(appSrc, 'flutter');
 const dist = path.join(root, 'dist');
 const lane = path.join(dist, 'm');
-const basePath = process.env.BASE_PATH || '/PWA-DraconDex/';
+const basePath = process.env.BASE_PATH || '/DraconDex-PWA/';
 
 function hasFlutter() {
   try { execSync('flutter --version', { stdio: 'ignore' }); return true; } catch (_) { return false; }
