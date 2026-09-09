@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // Pull the DraconDex source this PWA is built from.
 //
-// App-DraconDex is a separate (and private) repository, and none of its source
+// DraconDex-APP is a separate (and private) repository, and none of its source
 // is committed here — this repo holds the build tooling, the browser shims and
 // the built site. So every build starts by fetching the app at a pinned commit
 // into .app-src/ (gitignored).
 //
 //   node tools/fetch-app.mjs                 # the ref pinned in app-source.json
 //   node tools/fetch-app.mjs --ref main      # a different ref, and pin it
-//   node tools/fetch-app.mjs --local ../App-DraconDex   # an existing checkout
+//   node tools/fetch-app.mjs --local ../DraconDex-APP   # an existing checkout
 //
 // --local is what a working session uses when both repos are already on disk;
 // it copies rather than clones, so an uncommitted change in the app checkout
@@ -75,7 +75,7 @@ let sourceCommit = null;
 if (local) {
   const from = path.resolve(local);
   if (!fs.existsSync(path.join(from, 'electron', 'main.js'))) {
-    console.error(`[fetch] ${from} does not look like an App-DraconDex checkout`);
+    console.error(`[fetch] ${from} does not look like an DraconDex-APP checkout`);
     process.exit(1);
   }
   copyInto(from);

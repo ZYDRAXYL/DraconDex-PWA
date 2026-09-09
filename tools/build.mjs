@@ -2,7 +2,7 @@
 // One build of the whole site: fetch the app, build both lanes, write the shell.
 //
 //   npm run build                       # both lanes from the pinned commit
-//   npm run build -- --local ../App-DraconDex   # from a checkout beside this one
+//   npm run build -- --local ../DraconDex-APP   # from a checkout beside this one
 //   npm run build -- --skip-fetch       # reuse whatever is already in .app-src
 //
 // The mobile lane needs a Flutter SDK; without one it is skipped (loudly) and

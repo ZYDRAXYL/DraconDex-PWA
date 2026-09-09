@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Static server for dist/, for local checks and for tools/verify.mjs.
 // Mirrors GitHub Pages closely enough for what matters here: a project-page
-// prefix (/PWA-DraconDex/), directory index.html, and correct wasm/js types.
+// prefix (/DraconDex-PWA/), directory index.html, and correct wasm/js types.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
-export const PREFIX = '/PWA-DraconDex';
+export const PREFIX = '/DraconDex-PWA';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
