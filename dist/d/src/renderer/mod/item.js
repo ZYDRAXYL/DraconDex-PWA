@@ -24,15 +24,24 @@ const ITEM_KIND = {
     async list(moduleId) { return api.classifier.getObjects(moduleId); },
     nameOf: (o) => o.name,
     async renderBody(o, m) {
-      const [attrs, objTemplates] = await Promise.all([
+      // Single-object variant of getObjectsFull's hydration — 1 object is not a
+      // fan-out, so it stays a hand-built shape. Keep the two in step: levels
+      // and the link index were added to both in Process 8 part 1.
+      await loadModule('src/renderer/timeline.js');
+      const [attrs, objTemplates, levels, relations, index] = await Promise.all([
         api.classifier.getAttrs(o.id),
         api.classifier.getObjectTemplates(m.id, o.id),
+        api.classifier.getLevels(o.id),
+        api.viewer.getRelations(S.nexus.id),
+        api.viewer.index(S.nexus.id),
       ]);
-      const attrMap = {}, conditionMap = {};
+      const attrMap = {}, conditionMap = {}, levelMap = {};
       for (const a of attrs) { attrMap[a.template_ref] = a.attribute_value; conditionMap[a.template_ref] = a.condition_value; }
+      for (const l of levels) (levelMap[l.template_ref] ||= []).push(l);
+      setClassifierLinkData(relations, index);
       const templates = objTemplates.filter(tp => tp.object_ref == null);
       const hydrated = {
-        ...o, attrMap, conditionMap,
+        ...o, attrMap, conditionMap, levelMap,
         privateTemplates: objTemplates.filter(tp => tp.object_ref === o.id)
           .map(tp => ({ id: tp.id, description: tp.description, value: attrMap[tp.id] || '' })),
       };
@@ -50,6 +59,12 @@ const ITEM_KIND = {
     },
     nameOf: (e) => e.event_name,
     async renderBody(ev) {
+      // The inspector body renders the event's linked-elements section, which
+      // reads from module-level caches loadChroniclerData fills. This page can
+      // be opened without the module's own view ever having loaded, so prime
+      // them here too (same reasoning as the classifier entry above).
+      await loadModule('src/renderer/timeline.js');
+      await reloadChroniclerLinks();
       return `<div class="chr-insp-body" id="item-chr-insp">${await buildChroniclerEventInspectorHtml(ev, ev.__parentId)}</div>`;
     },
   },

@@ -47,7 +47,7 @@ async function pluginRefreshSection() {
   el.innerHTML = pluginBodyHtml(list, running);
 }
 
-// Plan part2 #5 — default "install from @LDKTC" list, so a user doesn't need
+// Plan part2 #5 — default "install from @ZYDRAXYL" list, so a user doesn't need
 // a repo URL already in hand. Advisory only: a network failure (offline, rate
 // limited) just leaves this section empty, no error toast — same silence
 // convention as the auto-preview-on-type path below.

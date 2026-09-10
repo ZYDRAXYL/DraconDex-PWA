@@ -80,9 +80,16 @@ function buildNestRow(m, depth, parentId) {
   // exactly the state a close animation needs to run FROM.
   const childrenWrap = collapsed ? '' : `<div class="nest-children" data-parent-id="${m.id}">${childrenHtml}${itemsHtml}</div>`;
   const showMajorIcon = S.settings.nestShowMajorIcon !== false;
-  const kindBadge = S.settings.nestSignatureMode === 'icon'
+  // Process 8 part 1: the signature slot after the name is 3-way now. 'handle'
+  // falls back to the kind label when this module has none, so switching the
+  // mode never leaves a row with a blank slot — a handle is optional and most
+  // modules will not have one.
+  const sigMode = S.settings.nestSignatureMode;
+  const kindBadge = sigMode === 'icon'
     ? `<span class="kind kind-icon" data-no-i18n>${I[KIND_ICON[m.kind]] || I.layer}</span>`
-    : `<span class="kind">${x(kindLabel(m.kind))}</span>`;
+    : sigMode === 'handle' && m.handle
+      ? `<span class="kind kind-handle" data-no-i18n>@${x(m.handle)}</span>`
+      : `<span class="kind">${x(kindLabel(m.kind))}</span>`;
   // draggable is on the whole row, not just a dedicated grip icon (Plan
   // part1 #3 removed the old decorative grip span) — a real drag started
   // anywhere on the row (name, icon, background — what a user would

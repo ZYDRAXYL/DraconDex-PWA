@@ -90,6 +90,7 @@
 .qs-chip.act{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .qs-filters select{background:var(--raised);border:1px solid var(--border);border-radius:var(--rs);color:var(--t1);
 	font-size:calc(11px * var(--fsc,1));padding:3px 6px}
+.qs-item .qs-handle{font-size:calc(10px * var(--fsc,1));color:var(--accentH);flex-shrink:0}
 .qs-item .qs-lc{font-size:calc(10px * var(--fsc,1));color:var(--accentH);border:1px solid var(--accent);border-radius:9px;padding:1px 7px;flex-shrink:0}
 .qs-item .qs-crumb{margin-left:auto;font-size:calc(10.5px * var(--fsc,1));color:var(--t3);white-space:nowrap;overflow:hidden;
 	text-overflow:ellipsis;max-width:220px;flex-shrink:0}

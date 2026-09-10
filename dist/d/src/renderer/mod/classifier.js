@@ -19,12 +19,19 @@ const CLASSIFIER_VIEW_LABEL = { table: 'Table', listDetail: 'Detail', relationCa
 // hydrates attrMap/conditionMap/privateTemplates server-side. Now a flat 3
 // (4 counting the inspector's own composite load, which runs in parallel).
 async function loadClassifierData(m) {
-  const [full, ui, relations] = await Promise.all([
+  // timeline.js is lazy and owns dateInputsHTML, which a 'date' attribute row
+  // now renders with (classifier-detail.js) — without this the widget is
+  // undefined for anyone who opens a classifier before ever opening a
+  // chronicler.
+  await loadModule('src/renderer/timeline.js');
+  const [full, ui, relations, index] = await Promise.all([
     api.classifier.getObjectsFull(m.id),
     api.module.getUi(m.id),
     api.viewer.getRelations(S.nexus.id),
+    api.viewer.index(S.nexus.id),
   ]);
   const { objects, templates } = full;
+  setClassifierLinkData(relations, index);
   S.classifierData = { moduleId: m.id, objects, templates, relations };
   S.classifierView = CLASSIFIER_VIEWS.includes(ui.activeView) ? ui.activeView : 'listDetail';
   if (S.classifierSelectedObject && !objects.find(o => o.id === S.classifierSelectedObject)) S.classifierSelectedObject = null;
@@ -114,52 +121,8 @@ function renderClassifierListDetail(m, d) {
   return `<div class="cls-listdetail"><div class="cls-list">${list}</div><div class="cls-detail">${detail}</div></div>`;
 }
 
-// One attribute's value row, plus its condition row when the template has
-// has_condition set (Plan part5 #3-#5: levelable value+steps, condition
-// field, and text/textarea/date display type all live here so every
-// caller of renderClassifierObjectDetail gets them for free).
-function renderClassifierAttrRowHtml(o, c) {
-  const val = x(o.attrMap[c.id] || '');
-  let valueHtml;
-  if (c.levelable) {
-    const steps = String(c.level_steps || '').split(',').map(s => s.trim()).filter(Boolean);
-    valueHtml = `<input type="number" class="pv-input" value="${val}" data-oid="${o.id}" data-tid="${c.id}" onchange="saveClassifierAttrInput(this)">
-      ${steps.length ? `<span class="cls-lvsteps">${steps.map(s => `<button type="button" class="btn btn-g btn-i" onclick="setClassifierLevelStep(${o.id},${c.id},${Number(s)})">${x(s)}</button>`).join('')}</span>` : ''}`;
-  } else if (c.attribute_type === 'textarea') {
-    valueHtml = `<textarea class="pv-textarea" data-oid="${o.id}" data-tid="${c.id}" onblur="saveClassifierAttrInput(this)">${val}</textarea>`;
-  } else if (c.attribute_type === 'date') {
-    valueHtml = `<input type="text" class="pv-input" placeholder="dd/mm/yy hh:mm" value="${val}" data-oid="${o.id}" data-tid="${c.id}" onblur="saveClassifierAttrInput(this)">`;
-  } else {
-    valueHtml = `<span class="pv" contenteditable="true" data-oid="${o.id}" data-tid="${c.id}" onblur="saveClassifierAttrCell(this)">${val}</span>`;
-  }
-  let html = `<div class="prop"><span class="pk">${x(c.description)}</span>${valueHtml}</div>`;
-  if (c.has_condition) {
-    const condVal = x(o.conditionMap?.[c.id] || '');
-    html += `<div class="prop cls-cond-row"><span class="pk">${t('condition')}</span>
-      <input type="text" class="pv-input" value="${condVal}" data-oid="${o.id}" data-tid="${c.id}" onblur="saveClassifierAttrCondition(this)"></div>`;
-  }
-  return html;
-}
-
-// `templates` defaults to the ambient module-view cache — the item page
-// (Plan part4, src/renderer/mod/item.js) passes its own freshly-fetched
-// templates instead, since it can be opened without the module's own view
-// ever having loaded S.classifierData.
-function renderClassifierObjectDetail(m, o, templates = S.classifierData?.templates || []) {
-  let html = `<h3 style="margin-bottom:8px">${x(o.name)}</h3>`;
-  for (const c of templates) html += renderClassifierAttrRowHtml(o, c);
-  if (m.cat_type === 'character') {
-    html += `<div class="insp-label">${t('customAttribute')}</div>`;
-    if (o.privateTemplates.length) {
-      const pt = o.privateTemplates[0];
-      html += `<div class="prop"><span class="pk">${x(pt.description)}</span>
-        <span class="pv" contenteditable="true" data-oid="${o.id}" data-tid="${pt.id}" onblur="saveClassifierAttrCell(this)">${x(pt.value || '')}</span></div>`;
-    } else {
-      html += `<button class="btn btn-g" style="margin:4px 14px" onclick="openClassifierCustomAttrModal(${m.id},${o.id})">${I.plus} ${t('customAttribute')}</button>`;
-    }
-  }
-  return html;
-}
+// renderClassifierAttrRowHtml / renderClassifierObjectDetail moved to
+// mod/classifier-detail.js (Process 8 part 1) — see that file's header.
 
 function selectClassifierObject(id) {
   S.classifierSelectedObject = id;
@@ -176,19 +139,6 @@ async function saveClassifierAttrInput(el) {
   await api.classifier.upsertAttr(oid, tid, value);
   const obj = S.classifierData?.objects.find(o => o.id === oid);
   if (obj) obj.attrMap[tid] = value;
-}
-
-function setClassifierLevelStep(oid, tid, n) {
-  const el = document.querySelector(`input[type="number"][data-oid="${oid}"][data-tid="${tid}"]`);
-  if (el) { el.value = n; saveClassifierAttrInput(el); }
-}
-
-async function saveClassifierAttrCondition(el) {
-  const oid = Number(el.dataset.oid), tid = Number(el.dataset.tid);
-  const value = el.value.trim();
-  await api.classifier.upsertAttrCondition(oid, tid, value);
-  const obj = S.classifierData?.objects.find(o => o.id === oid);
-  if (obj) obj.conditionMap[tid] = value;
 }
 
 // ── Relation view (real force graph, Plan part5 #6) ─────────────────────
@@ -354,34 +304,39 @@ async function deleteClassifierObjectRow(objectId) {
 // ── Shared template CRUD ────────────────────────────────────────────────
 const CLASSIFIER_DISPTYPE_KEY = { text: 'dispTypeText', textarea: 'dispTypeTextarea', date: 'dispTypeDate' };
 
-async function openClassifierTemplateModal(moduleId) {
-  const m = S.activeModuleNode;
+// Process 8 part 1: the two flags are no longer gated to cat_type 'element' —
+// a Character classifier gets levelable/condition too. The level-steps input is
+// gone entirely: stages are authored per element in the detail view now
+// (classifier-detail.js), not once for the whole category here.
+// `editing` is a template id when the form is prefilled for an edit, else null.
+async function openClassifierTemplateModal(moduleId, editing = null) {
   const templates = S.classifierData?.templates || [];
-  const isElement = m.cat_type === 'element';
+  const cur = editing ? templates.find(tp => tp.id === editing) : null;
   openModal(t('editTemplate'), `
     <div>${templates.map(tpl => `
-      <div class="prop insp-attr">
+      <div class="prop insp-attr${tpl.id === editing ? ' cls-tpl-editing' : ''}">
         <span class="pk">${x(tpl.description)}</span>
-        <span class="pv ghost">${[t(CLASSIFIER_DISPTYPE_KEY[tpl.attribute_type] || 'dispTypeText'), isElement && tpl.levelable ? t('levelable') : '', isElement && tpl.has_condition ? t('condition') : ''].filter(Boolean).join(' · ')}</span>
-        <span class="acts"><button class="btn btn-g btn-i" onclick="deleteClassifierTemplateRow(${tpl.id})">${I.delete}</button></span>
+        <span class="pv ghost">${[t(CLASSIFIER_DISPTYPE_KEY[tpl.attribute_type] || 'dispTypeText'), tpl.levelable ? t('levelable') : '', tpl.has_condition ? t('condition') : ''].filter(Boolean).join(' · ')}</span>
+        <span class="acts">
+          <button class="btn btn-g btn-i" onclick="openClassifierTemplateModal(${moduleId},${tpl.id})" title="${t('edit')}">${I.edit}</button>
+          <button class="btn btn-g btn-i" onclick="deleteClassifierTemplateRow(${tpl.id})" title="${t('delete')}">${I.delete}</button>
+        </span>
       </div>`).join('') || `<p style="color:var(--t3);font-size:calc(12px * var(--fsc,1));padding:4px 0">${t('nestEmpty')}</p>`}
     </div>
-    <div class="fg" style="margin-top:10px"><label>${t('addAttribute')}</label><input id="ct-name" placeholder="${t('name')}"></div>
+    <div class="fg" style="margin-top:10px"><label>${cur ? t('editAttribute') : t('addAttribute')}</label><input id="ct-name" placeholder="${t('name')}" value="${x(cur?.description || '')}"></div>
     <div class="fg"><label>${t('displayType')}</label>
       <select id="ct-disptype">
-        <option value="text">${t('dispTypeText')}</option>
-        <option value="textarea">${t('dispTypeTextarea')}</option>
-        <option value="date">${t('dispTypeDate')}</option>
+        <option value="text" ${cur?.attribute_type === 'text' || !cur ? 'selected' : ''}>${t('dispTypeText')}</option>
+        <option value="textarea" ${cur?.attribute_type === 'textarea' ? 'selected' : ''}>${t('dispTypeTextarea')}</option>
+        <option value="date" ${cur?.attribute_type === 'date' ? 'selected' : ''}>${t('dispTypeDate')}</option>
       </select>
     </div>
-    ${isElement ? `
-    <div class="togglerow" onclick="toggleTemplateFlag('lv')"><span class="tg" id="ct-lv-tg"></span>${t('levelable')}</div>
-    <div class="fg" id="ct-levelsteps-wrap" style="display:none"><label>${t('levelSteps')}</label><input id="ct-levelsteps" placeholder="3,5,999"></div>
-    <div class="togglerow" onclick="toggleTemplateFlag('cond')"><span class="tg" id="ct-cond-tg"></span>${t('condition')}</div>
-    <input type="hidden" id="ct-lv" value="0"><input type="hidden" id="ct-cond" value="0">` : ''}
+    <div class="togglerow" onclick="toggleTemplateFlag('lv')"><span class="tg${cur?.levelable ? ' on' : ''}" id="ct-lv-tg"></span>${t('levelable')}</div>
+    <div class="togglerow" onclick="toggleTemplateFlag('cond')"><span class="tg${cur?.has_condition ? ' on' : ''}" id="ct-cond-tg"></span>${t('condition')}</div>
+    <input type="hidden" id="ct-lv" value="${cur?.levelable ? 1 : 0}"><input type="hidden" id="ct-cond" value="${cur?.has_condition ? 1 : 0}">
     <div class="mfoot">
-      <button class="btn btn-s" onclick="closeModal()">${t('cancel')}</button>
-      <button class="btn btn-p" onclick="submitClassifierTemplateForm(${moduleId})">${t('addAttribute')}</button>
+      ${cur ? `<button class="btn btn-s" onclick="openClassifierTemplateModal(${moduleId})">${t('cancel')}</button>` : `<button class="btn btn-s" onclick="closeModal()">${t('cancel')}</button>`}
+      <button class="btn btn-p" onclick="submitClassifierTemplateForm(${moduleId},${editing ?? 'null'})">${cur ? t('save') : t('addAttribute')}</button>
     </div>`);
 }
 
@@ -390,20 +345,22 @@ function toggleTemplateFlag(key) {
   const on = hidden.value === '1';
   hidden.value = on ? '0' : '1';
   q(`#ct-${key}-tg`)?.classList.toggle('on', !on);
-  if (key === 'lv') { const w = q('#ct-levelsteps-wrap'); if (w) w.style.display = on ? 'none' : ''; }
 }
 
-async function submitClassifierTemplateForm(moduleId) {
+// One submit for both create and edit — updateTemplate has been wired through
+// preload/main since Phase 5 but had no renderer caller until now, so editing
+// an existing attribute needed no backend work, only this branch.
+async function submitClassifierTemplateForm(moduleId, editing = null) {
   const name = q('#ct-name').value.trim();
   if (!name) return;
   const dispType = q('#ct-disptype')?.value || 'text';
   const levelable = q('#ct-lv')?.value === '1';
   const hasCondition = q('#ct-cond')?.value === '1';
-  const levelSteps = levelable ? (q('#ct-levelsteps')?.value.trim() || null) : null;
-  await api.classifier.createTemplate(moduleId, name, dispType, levelable, hasCondition, null, levelSteps);
+  if (editing) await api.classifier.updateTemplate(editing, name, dispType, levelable, hasCondition, null);
+  else await api.classifier.createTemplate(moduleId, name, dispType, levelable, hasCondition, null, null);
   await loadClassifierData(S.activeModuleNode);
   renderNexusHome();
-  toast(t('created'), 'ok');
+  toast(t(editing ? 'saved' : 'created'), 'ok');
   openClassifierTemplateModal(moduleId);
 }
 

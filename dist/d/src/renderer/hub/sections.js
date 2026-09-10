@@ -38,8 +38,11 @@ function toggleNestOption(key) {
   const pop = document.querySelector('.nest-options-popup');
   if (pop) pop.innerHTML = buildNestOptionsPopupHtml();
 }
-function toggleNestSignatureMode() {
-  S.settings.nestSignatureMode = S.settings.nestSignatureMode === 'icon' ? 'name' : 'icon';
+// Process 8 part 1: no longer a toggle — the signature slot after a Nest row's
+// name now picks between three things (kind label / kind icon / the module's
+// handle), so the caller names the mode instead of flipping a boolean.
+function setNestSignatureMode(mode) {
+  S.settings.nestSignatureMode = ['icon', 'handle'].includes(mode) ? mode : 'name';
   saveUiSettings();
   renderNexusHome();
   const pop = document.querySelector('.nest-options-popup');

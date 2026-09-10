@@ -21,7 +21,9 @@ function settingStartupPageHtml(){
       <button class="btn ${mode !== 'latest' ? 'btn-p' : 'btn-s'}" onclick="setStartupMode('welcome')">${t('settingStartupWelcome')}</button>
       <button class="btn ${mode === 'latest' ? 'btn-p' : 'btn-s'}" onclick="setStartupMode('latest')">${t('settingStartupLatest')}</button>
     </div>
-    <div class="settings-hint">${t('settingStartupHint')}</div>`;
+    <div class="settings-hint">${t('settingStartupHint')}</div>
+    <div class="settings-label" style="margin-top:18px">${t('versionLimit')}</div>
+    <input class="settings-number" type="number" min="1" max="500" value="${S.versionLimitCache ?? 50}" onchange="setVersionLimit(this.value)">`;
 }
 async function setStartupMode(mode){
   const v = mode === 'latest' ? 'latest' : 'welcome';

@@ -294,6 +294,17 @@ function builderCloseIfEmpty(paneIdx) {
 }
 
 // ── Tab labels ──────────────────────────────────────────────────────────
+// The Builder tab's trailing chip follows the Hub's Nest signature setting
+// (S.settings.nestSignatureMode) so both surfaces label a module the same way.
+// Only module tabs carry a handle/icon; file, item and Sage tabs supply just
+// `badge`, so both special modes fall through to it.
+function builderTabBadge(meta) {
+  const mode = S.settings.nestSignatureMode;
+  if (mode === 'icon' && meta.badgeIcon) return meta.badgeIcon;
+  if (mode === 'handle' && meta.badgeHandle) return `@${x(meta.badgeHandle)}`;
+  return x(meta.badge);
+}
+
 function builderTabMeta(key) {
   const ref = builderParseKey(key);
   if (!ref) return null;
@@ -302,6 +313,7 @@ function builderTabMeta(key) {
     if (!m) return null;
     return {
       name: m.name, badge: kindLabel(m.kind), badgeIcon: I[KIND_ICON[m.kind]] || '',
+      badgeHandle: m.handle || '',
       color: m.color_code || 'var(--accent)', icon: moduleIconHtml(m),
     };
   }
@@ -510,7 +522,7 @@ function builderPaneHeadHtml(i, pane, focused) {
       onclick="builderSwitchTab(${i},${xj(key)})" title="${x(meta.name)}">
       <span class="tab-kicon" style="color:${x(meta.color)}">${meta.icon || ''}</span>
       <span class="tab-name">${x(meta.name)}</span>
-      <span class="ek" data-no-i18n>${S.settings.nestSignatureMode === 'icon' && meta.badgeIcon ? meta.badgeIcon : x(meta.badge)}</span>
+      <span class="ek" data-no-i18n>${builderTabBadge(meta)}</span>
       ${S.isPopup ? `<span class="tab-close" onclick="event.stopPropagation();builderMoveTabToMain(${i},${xj(key)})" title="${t('moveToMainWindow')}">${I.return}</span>` : ''}
       <span class="tab-close" onclick="event.stopPropagation();builderCloseTab(${i},${xj(key)})" title="${t('closeTab')}">&times;</span>
     </div>`;

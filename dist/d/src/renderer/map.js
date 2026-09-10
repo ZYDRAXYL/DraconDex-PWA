@@ -216,7 +216,12 @@ async function renderMapBoard(){
         if(dx || dy){
           for(const p of pts){ p.x += dx; p.y += dy; }
           dragOrigin = cur;
-          poly.points(mapAreaLinePoints(pts));
+          // Don't rewrite poly's own `points` here: Konva's drag transform
+          // already holds the full cumulative offset in poly.position(), so
+          // baking that same offset into `points` too would double it,
+          // visually outrunning the vertex circles below (which only ever
+          // get this tick's single, correct 1x delta). points() gets
+          // normalized once, on dragend, after position() resets to origin.
           layer.getChildren().forEach(node => {
             if(node.attrs.pointRef && node.attrs.areaId === area.id){
               node.position({ x: node.attrs.pointRef.x, y: node.attrs.pointRef.y });

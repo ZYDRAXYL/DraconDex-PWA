@@ -11,6 +11,13 @@
 .prop{display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:calc(12px * var(--fsc,1))}
 .prop .pk{width:88px;color:var(--t3);flex-shrink:0}
 .prop .pv{flex:1;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Editable text attributes (classifier-detail.js's contenteditable case)
+   need to visually read as a text box, same as .pv-input/.pv-textarea and
+   .cls-lv-inp already do — plain .pv is also used read-only elsewhere
+   (inspector.js), so this is scoped to the editable case only. */
+.prop .pv[contenteditable]{display:inline-block;background:var(--surface);border:1px solid var(--border);
+	border-radius:6px;padding:5px 8px}
+.prop .pv[contenteditable]:focus{border-color:var(--accent);outline:none}
 .prop .pv.ghost{color:var(--t3);font-style:italic}
 .prop .acts{margin-left:auto}
 .insp-desc-wrap{padding:4px 14px 8px}
@@ -166,6 +173,16 @@ body.renaming-lock *:has(.rename-input){pointer-events:auto}
    .kind-popup, so give these their own tighter row padding/hover. */
 .nest-opt-row{padding:7px 8px;margin-top:0;border-radius:var(--rs);cursor:pointer}
 .nest-opt-row:hover{background:var(--hover)}
+/* the one 3-way row among the Nest options — not a toggle, so it opts out of
+   the hover affordance the boolean rows use and stacks label over control */
+.nest-sig-row{cursor:default;padding-top:9px}
+.nest-sig-row:hover{background:none}
+.nest-sig-label{font-size:calc(11px * var(--fsc,1));color:var(--t3);margin-bottom:5px}
+.nest-sig-row .name-mode-seg{gap:4px}
+/* nowrap + a popup floor: the longest label ("Type name") wraps to two lines in
+   several locales otherwise, which leaves the three buttons different heights */
+.nest-sig-row .name-mode-seg .btn{padding:4px 6px;font-size:calc(11px * var(--fsc,1));white-space:nowrap}
+.nest-options-popup{min-width:230px;padding:4px}
 
 /* Classifier views (progress.md Phase 5) */
 .classifier-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
@@ -202,8 +219,38 @@ body.renaming-lock *:has(.rename-input){pointer-events:auto}
 .pv-input,.pv-textarea{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;
 	color:var(--t1);font-size:calc(12px * var(--fsc,1));padding:5px 8px;font-family:inherit}
 .pv-textarea{min-height:60px;resize:vertical}
-.cls-lvsteps{display:inline-flex;gap:4px;margin-left:8px}
-.cls-cond-row{margin-top:-2px}
+/* ── Classifier element level/condition table + links (Process 8 part 1) ── */
+.cls-lv-wrap{padding:6px 14px 10px}
+.cls-lv-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+.cls-lv-add{padding:3px 9px;font-size:calc(11px * var(--fsc,1))}
+/* Column widths come from a <colgroup> written per-row by
+   clsLevelColumnWidths() (level <=10% of the row, condition 30% of what's
+   left, info the rest, grip/action reserved as small fixed shares of the
+   same 100% budget) rather than from CSS, since the ratio depends on which
+   columns a given attribute actually has. */
+.cls-lv-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.cls-lv-table th{text-align:left;font-size:calc(10.5px * var(--fsc,1));font-weight:500;color:var(--t3);
+	padding:3px 6px;border-bottom:1px solid var(--border)}
+.cls-lv-table td{padding:2px 4px;vertical-align:middle}
+.cls-lv-table td.cls-lv-grip{text-align:center}
+.cls-lv-table td.cls-lv-act{text-align:right}
+.cls-lv-table tr.drop-before td{box-shadow:inset 0 2px 0 0 var(--accent)}
+.cls-lv-table tr.drop-after td{box-shadow:inset 0 -2px 0 0 var(--accent)}
+.cls-lv-inp{width:100%;padding:5px 7px;background:var(--raised);border:1px solid var(--border);
+	border-radius:var(--rs);color:var(--t1);font-size:calc(12.5px * var(--fsc,1));font-family:inherit;outline:none}
+.cls-lv-inp:focus{border-color:var(--accent)}
+.cls-lv-empty{font-size:calc(11.5px * var(--fsc,1));color:var(--t3);padding:3px 2px}
+.cls-link-label{margin-top:10px}
+.cls-link-list{padding:0 14px}
+.cls-link-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)}
+.cls-link-row:last-child{border-bottom:none}
+.cls-link-name{flex:1;min-width:0;font-size:calc(12.5px * var(--fsc,1));color:var(--t1);cursor:pointer;
+	overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cls-link-name:hover{color:var(--accentH);text-decoration:underline}
+.cls-link-mod{font-size:calc(10.5px * var(--fsc,1));color:var(--t3);flex-shrink:0}
+.cls-link-lbl{font-size:calc(10.5px * var(--fsc,1));color:var(--accentH);border:1px solid var(--accent);
+	border-radius:9px;padding:0 7px;flex-shrink:0}
+.cls-tpl-editing{border-left:2px solid var(--accent)}
 
 /* Manager view (progress.md Phase 6) */
 .mgr-card{display:flex;flex-direction:column;align-items:center;gap:4px}
@@ -211,6 +258,8 @@ body.renaming-lock *:has(.rename-input){pointer-events:auto}
 .mgr-card-icon .icon{width:22px;height:22px}
 .mgr-card-icon .kicon-img-icon{width:22px;height:22px;border-radius:50%;object-fit:cover}
 .mgr-card-count{font-size:calc(10px * var(--fsc,1));color:var(--t3)}
+/* Process 8 part 2: "<majors below> / <own minors>" on a Manager list row. */
+.mgr-row-count{font-size:calc(10.5px * var(--fsc,1));color:var(--t3);margin-left:8px;flex-shrink:0}
 
 /* Canvas chrome: pan/zoom hint pill + zoom control (progress.md Phase 7,
    cross-cutting per Section A.3 #6 — every canvas/graph kind gets these) */

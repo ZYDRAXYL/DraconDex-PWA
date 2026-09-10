@@ -285,6 +285,8 @@ function runBuilderMounts() {
     mountSketcherBoard();
     mountSketcherExtras();
   }
+  if (S.activeModuleNode?.kind === 'manager' && S.managerData?.view === 'graph'
+      && typeof mountManagerGraph === 'function') mountManagerGraph();
   if (S.activeModuleNode?.kind === 'designer' && typeof mountDesignerBoard === 'function') mountDesignerBoard();
 }
 

@@ -54,7 +54,17 @@ function settingWorkspaceStylePageHtml() {
   // ambiguous which style's orientation the two rows below are for.
   return `<div class="settings-label">${t('settingPageWorkspaceStyle')}</div>
     <div class="prefs-theme-grid">${cells}</div>
-    ${dirty ? `<button class="btn btn-p" style="margin-top:14px" onclick="applyWorkspaceStyleChoice()">${t('settingWorkspaceApply')}</button>` : settingWorkspaceLayoutHtml() + settingWorkspaceAnimationHtml()}`;
+    ${dirty ? `<button class="btn btn-p" style="margin-top:14px" onclick="applyWorkspaceStyleChoice()">${t('settingWorkspaceApply')}</button>` : settingWorkspaceLayoutHtml() + settingWorkspaceUiSizeHtml() + settingWorkspaceAnimationHtml()}`;
+}
+
+// Process 7 part 2 — "UI size" (--ui-scale, overall zoom) moved here from the
+// Text & Size page: it's a layout/UI concern, not a text one. Reuses the same
+// UI-size-only slider the quick popup uses (settings.js's uiSizeOnlySliderHtml).
+function settingWorkspaceUiSizeHtml() {
+  return `<div class="settings-label" style="margin-top:18px">${t('uiSize')}</div>
+    <div class="settings-group">
+      ${uiSizeOnlySliderHtml()}
+    </div>`;
 }
 
 // Process 5 part1 — nav orientation + (when horizontal) button display mode

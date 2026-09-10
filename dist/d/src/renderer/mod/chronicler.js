@@ -12,30 +12,32 @@
 const CHRONICLER_VIEWS = ['oneline', 'downline', 'compare', 'calendar'];
 const CHRONICLER_VIEW_LABEL = { oneline: 'Oneline', downline: 'Downline', compare: 'Compare', calendar: 'Calendar' };
 
-const CHRONICLER_CALENDAR_DEFAULTS = {
-  daysPerWeek: 7, daysPerMonth: 30, monthsPerYear: 12,
-  dayNames: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-  monthNames: [],
-};
-function chroniclerCalendarConfig() {
-  const raw = S.chroniclerData?.calendarConfig;
-  return raw ? { ...CHRONICLER_CALENDAR_DEFAULTS, ...raw } : { ...CHRONICLER_CALENDAR_DEFAULTS };
-}
+// CHRONICLER_CALENDAR_DEFAULTS / chroniclerCalendarConfig are gone: the
+// calendar is a unit spec now, normalized by calSpecNormalize (which still
+// upgrades the old five-field blob) and held as S.chroniclerData.calendarSpec.
 
-function sortChroniclerEvents(evs) {
+function sortChroniclerEvents(evs, spec) {
+  spec = spec || timelineCalendarSpec();
+  const key = (e) => calToOrdinal(spec, { y: e.s_years, m: e.s_month, d: e.s_day, h: e.s_hour, mi: e.s_minute });
   return evs.slice().sort((a, b) => {
-    const ka = (a.s_years || 0) * 10000 + (a.s_month || 0) * 100 + (a.s_day || 0);
-    const kb = (b.s_years || 0) * 10000 + (b.s_month || 0) * 100 + (b.s_day || 0);
+    const ka = key(a), kb = key(b);
+    // A dateless event keeps its arrival order rather than jumping to the top.
+    if (ka === null && kb === null) return 0;
+    if (ka === null) return 1;
+    if (kb === null) return -1;
     return ka - kb;
   });
 }
 
 async function loadChroniclerData(m) {
   await loadModule('src/renderer/timeline.js');
-  const [timelines, ui] = await Promise.all([
+  const [timelines, ui, relations, index] = await Promise.all([
     api.timeline.getModuleTimelines(m.id),
     api.module.getUi(m.id),
+    api.viewer.getRelations(S.nexus.id),
+    api.viewer.index(S.nexus.id),
   ]);
+  setChroniclerLinkData(relations, index);
   const prev = (S.chroniclerData && S.chroniclerData.moduleId === m.id) ? S.chroniclerData : null;
   let activeId = prev?.activeId;
   if (!activeId || !timelines.find(t => t.id === activeId)) activeId = timelines[0]?.id || null;
@@ -46,10 +48,29 @@ async function loadChroniclerData(m) {
   const view = CHRONICLER_VIEWS.includes(ui.view) ? ui.view : 'oneline';
   let calendarConfig = null;
   try { calendarConfig = ui.calendarConfig ? JSON.parse(ui.calendarConfig) : null; } catch (_) { calendarConfig = null; }
+  // calSpecNormalize also upgrades the v1 blob, so an existing vault's
+  // calendar keeps its shape without ever being rewritten on disk.
+  const calendarSpec = calSpecNormalize(calendarConfig);
+  const pendingEvent = S.pendingChroniclerEvent;
+  S.pendingChroniclerEvent = null;
   S.chroniclerData = {
-    moduleId: m.id, timelines, activeId, compareId, view, inspectorEventId: prev?.inspectorEventId ?? null,
-    calendarConfig, calViewYear: prev?.calViewYear ?? null, calViewMonth: prev?.calViewMonth ?? null,
-    calSettingsOpen: false,
+    moduleId: m.id, timelines, activeId, compareId, view,
+    inspectorEventId: pendingEvent ?? prev?.inspectorEventId ?? null,
+    calendarConfig, calendarSpec,
+    // Which unit the calendar grid is zoomed to, and where it is pointed.
+    // Both survive a re-render but are deliberately not persisted — they are
+    // a scroll position, not a setting.
+    calZoom: prev?.calZoom ?? 'month',
+    calCursor: prev?.calCursor ?? null,
+    // Custom-calendar panel: open state and which unit page it is showing.
+    calPanelOpen: false,
+    calPanelUnit: prev?.calPanelUnit ?? 'day',
+    // Process 8 part 1: graph display toggles. Stored as '0'/'1' strings in
+    // module_ui, absent meaning on, so a timeline made before this round shows
+    // both rather than silently losing its labels.
+    graphShowIcon: ui.graphShowIcon !== '0',
+    graphShowDate: ui.graphShowDate !== '0',
+    downlineView: prev?.downlineView ?? { scale: 1, ty: 0 },
   };
 }
 
@@ -91,6 +112,9 @@ function buildChroniclerMainHtml(m) {
     ${activeId ? `<button class="btn btn-g btn-i" onclick="openChroniclerTimelineModal(${m.id},${activeId})" title="${t('edit')}">${I.edit}</button>` : ''}
     ${activeId ? `<button class="btn btn-p" onclick="openChroniclerEventModal(${activeId})">${I.plus} ${t('addEvent')}</button>` : ''}
     ${viewBar}
+    ${view === 'oneline' || view === 'downline'
+      ? `<button class="btn btn-g btn-i" onclick="event.stopPropagation();openChroniclerGraphOptions(this)" title="${t('chrGraphOptions')}">${I.options}</button>` : ''}
+    ${view === 'downline' ? `<button class="btn btn-g btn-i" onclick="resetChroniclerDownlineView()" title="${t('chrResetView')}">${I.return}</button>` : ''}
   </div>`;
 
   if (!timelines.length) {
@@ -143,13 +167,13 @@ async function mountChroniclerGraph() {
   }
 
   if (data.view === 'calendar') {
-    const config = chroniclerCalendarConfig();
-    if (data.calViewYear == null || data.calViewMonth == null) {
+    // The cursor starts on the first event so an existing timeline opens
+    // showing something, rather than on an empty year 0.
+    if (data.calCursor == null) {
       const first = evs[0];
-      data.calViewYear = first?.s_years ?? 0;
-      data.calViewMonth = first?.s_month ?? 1;
+      data.calCursor = { y: first?.s_years ?? 1, m: first?.s_month ?? 1, d: first?.s_day ?? 1 };
     }
-    host.innerHTML = buildChroniclerCalendarHtml(evs, config, data);
+    host.innerHTML = buildChroniclerCalendarHtml(evs, data);
     return;
   }
 
@@ -160,8 +184,11 @@ async function mountChroniclerGraph() {
   }
   if (data.view === 'downline') {
     // Mockup 22: a vertical proportional time line on the left, the event
-    // list on the right — no pan/zoom on this view.
+    // list on the right. Gained wheel-zoom / right-drag-pan in Process 8
+    // part 1 — see bindChroniclerDownlineInteractions for why it is a
+    // separate binding from the oneline one rather than a shared axis.
     host.innerHTML = await buildChroniclerDownlineHtml(evs, data.activeId, col, data.inspectorEventId);
+    bindChroniclerDownlineInteractions();
     return;
   }
   host.innerHTML = await buildChroniclerOneLineHtml(evs, data.activeId, col, data.inspectorEventId);
@@ -182,11 +209,91 @@ async function toggleChroniclerInspector(tlid, evId) {
 }
 
 async function buildChroniclerEventInspectorHtml(ev, tlid) {
+  // Process 8 part 1: start and end sit side by side. Two stacked .fg blocks,
+  // each holding a full 5-box date row, made the inspector far taller and wider
+  // than the information in it justified.
   return `
     <div class="fg"><label>${t('name')} *</label><input id="chr-insp-n" value="${x(ev.event_name || '')}" onchange="saveChroniclerInspectorField(${ev.id},${tlid})"></div>
-    <div class="fg"><label>${t('startDate')} *</label>${dateInputsHTML('chr-insp-s', ev, 's_day', 's_month', 's_years', 's_hour', 's_minute', `saveChroniclerInspectorField(${ev.id},${tlid})`)}</div>
-    <div class="fg"><label>${t('endDate')}</label>${dateInputsHTML('chr-insp-e', ev, 'e_day', 'e_month', 'e_years', 'e_hour', 'e_minute', `saveChroniclerInspectorField(${ev.id},${tlid})`)}</div>
-    <div class="fg"><label>${t('story')}</label><textarea id="chr-insp-story" onchange="saveChroniclerInspectorField(${ev.id},${tlid})">${x(ev.story || '')}</textarea></div>`;
+    <div class="chr-daterow">
+      <div class="fg"><label>${t('startDate')} *</label>${dateInputsHTML('chr-insp-s', ev, 's_day', 's_month', 's_years', 's_hour', 's_minute', `saveChroniclerInspectorField(${ev.id},${tlid})`)}</div>
+      <div class="fg"><label>${t('endDate')}</label>${dateInputsHTML('chr-insp-e', ev, 'e_day', 'e_month', 'e_years', 'e_hour', 'e_minute', `saveChroniclerInspectorField(${ev.id},${tlid})`)}</div>
+    </div>
+    <div class="fg"><label>${t('story')}</label><textarea id="chr-insp-story" onchange="saveChroniclerInspectorField(${ev.id},${tlid})">${x(ev.story || '')}</textarea></div>
+    ${renderChroniclerEventLinksHtml(ev)}`;
+}
+
+// ── Linked elements from other Major modules ────────────────────────────
+// Same mechanism as the classifier's element links (mod/classifier-detail.js):
+// entity_relation rows, here keyed tlev_<id>. migrate_v3.js already writes that
+// key kind, so nothing new is needed in the schema. viewer.index supplies both
+// the picker and the "which module did this come from" label the Plan asks for.
+let _chrLinks = [];
+let _chrLinkIndex = {};
+function setChroniclerLinkData(relations, index) {
+  _chrLinks = relations || [];
+  _chrLinkIndex = {};
+  for (const e of (index || [])) _chrLinkIndex[e.key] = e;
+}
+
+function renderChroniclerEventLinksHtml(ev) {
+  const self = `tlev_${ev.id}`;
+  const rows = _chrLinks.filter(l => l.from_key === self || l.to_key === self).map(l => {
+    const otherKey = l.from_key === self ? l.to_key : l.from_key;
+    const e = _chrLinkIndex[otherKey];
+    const from = e ? `${e.moduleName || '—'}${e.moduleKind ? ` · ${kindLabel(e.moduleKind)}` : ''}` : '—';
+    return `<div class="cls-link-row">
+      <span class="cls-link-name" onclick="openEntityByKey('${x(otherKey)}')">${x(e ? e.name : otherKey)}</span>
+      <span class="cls-link-mod">${x(from)}</span>
+      ${l.label ? `<span class="cls-link-lbl">${x(l.label)}</span>` : ''}
+      <button class="btn btn-g btn-i" onclick="deleteChroniclerEventLink(${l.id})" title="${t('delete')}">${I.delete}</button>
+    </div>`;
+  }).join('');
+  return `<div class="insp-label cls-link-label">${t('linkedElements')}</div>
+    <div class="cls-link-list">${rows || `<div class="cls-lv-empty">${t('noLinkedElements')}</div>`}</div>
+    <button class="btn btn-g" style="margin:4px 0" onclick="openChroniclerEventLinkModal(${ev.id})">${I.plus} ${t('addLinkedElement')}</button>`;
+}
+
+async function openChroniclerEventLinkModal(evId) {
+  const ix = await api.viewer.index(S.nexus.id);
+  const opts = ix.filter(e => e.key !== `tlev_${evId}` && !e.key.startsWith('module_'));
+  openModal(t('addLinkedElement'), `
+    <div class="fg"><label>${t('element')}</label>
+      <select id="chrl-target">${opts.map(e =>
+        `<option value="${x(e.key)}">${x(e.name)} — ${x(e.moduleName || '')}</option>`).join('')}</select></div>
+    <div class="fg"><label>${t('relationLabel')}</label><input id="chrl-label"></div>
+    <div class="mfoot">
+      <button class="btn btn-s" onclick="closeModal()">${t('cancel')}</button>
+      <button class="btn btn-p" onclick="submitChroniclerEventLink(${evId})">${t('create')}</button>
+    </div>`);
+}
+
+async function submitChroniclerEventLink(evId) {
+  const target = q('#chrl-target')?.value;
+  if (!target) { closeModal(); return; }
+  try {
+    await api.viewer.createRelation(S.nexus.id, `tlev_${evId}`, target, q('#chrl-label')?.value.trim() || null, null);
+  } catch (e) {
+    toast(t('linkExists'), 'err');
+    return;
+  }
+  closeModal();
+  await reloadChroniclerLinks();
+  await mountChroniclerGraph();
+  toast(t('created'), 'ok');
+}
+
+async function deleteChroniclerEventLink(id) {
+  await api.viewer.deleteRelation(id);
+  await reloadChroniclerLinks();
+  await mountChroniclerGraph();
+}
+
+async function reloadChroniclerLinks() {
+  const [relations, index] = await Promise.all([
+    api.viewer.getRelations(S.nexus.id),
+    api.viewer.index(S.nexus.id),
+  ]);
+  setChroniclerLinkData(relations, index);
 }
 
 // Color+icon are picked via clicking the event's dot (openChroniclerEventIconPopup)
@@ -241,204 +348,12 @@ async function saveChroniclerInspectorField(evId, tlid) {
   } catch (e) { toast(e.message, 'err'); console.error(e); }
 }
 
-async function buildChroniclerDownlineHtml(evs, tlid, col, inspectorEventId) {
-  const TOP = 26, W = 340, LINE_X = 40;
-  const H = Math.max(360, Math.min(720, evs.length * 96));
-  const tsOf = (ev) => timelineTsFromParts(ev.s_day, ev.s_month, ev.s_years, ev.s_hour, ev.s_minute);
-  const allTs = evs.map(tsOf).filter(ts => ts !== null);
-  const minTs = allTs.length ? Math.min(...allTs) : 0;
-  const spanTs = Math.max(1, (allTs.length ? Math.max(...allTs) : 1) - minTs);
-  const yFromTs = (ts) => ts === null ? TOP : TOP + ((ts - minTs) / spanTs) * (H - 2 * TOP);
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-    <line x1="${LINE_X}" y1="${TOP - 10}" x2="${LINE_X}" y2="${H - TOP + 10}" stroke="var(--border)" stroke-width="2"/>`;
-  for (const ev of evs) {
-    const ts = tsOf(ev), y = yFromTs(ts), ec = ev.color_code || col;
-    const sTxt = fmtDate(ev.s_day, ev.s_month, ev.s_years, ev.s_hour, ev.s_minute);
-    svg += `<circle cx="${LINE_X}" cy="${y}" r="6" fill="${ec}" style="cursor:pointer" onclick="openChroniclerEventIconPopup(${ev.id},this,${tlid})"/>
-      <text x="${LINE_X + 20}" y="${y - 1}" fill="var(--t1)" font-size="12.5" style="cursor:pointer" onclick="toggleChroniclerInspector(${tlid},${ev.id})">${x(ev.event_name || '—')}</text>
-      <text x="${LINE_X + 20}" y="${y + 14}" fill="var(--t3)" font-size="10.5">${x(sTxt)}</text>`;
-  }
-  svg += `</svg>`;
-  return `<div class="chr-downline">
-    <div class="chr-downline-graph">${svg}<div class="chr-downline-note" data-no-i18n>${t('trueTimeScaleNote')}</div></div>
-    <div class="chr-downline-list">${await buildChroniclerEventListHtml(evs, tlid, col, inspectorEventId)}</div>
-  </div>`;
-}
+// buildChroniclerDownlineHtml / buildChroniclerOneLineHtml /
+// buildChroniclerCompareHtml and the graph display toggles moved to
+// mod/chronicler-graph.js (Process 8 part 1) — see that file's header.
 
-async function buildChroniclerOneLineHtml(evs, tlid, col, inspectorEventId) {
-  const MARGIN = 80, LINE_Y = 90, SVG_H = 180;
-  const hostW = q('#main-inner')?.offsetWidth || 900;
-  const trackW = Math.max(hostW, 900);
-  const usable = trackW - (2 * MARGIN);
-  const graphState = timelineGraphState[tlid] ||= { scale: 1, tx: 0, yOffsets: {} };
-  const startTs = evs.map(ev => timelineTsFromParts(ev.s_day, ev.s_month, ev.s_years, ev.s_hour, ev.s_minute));
-  const allTs = startTs.filter(ts => ts !== null);
-  const minTs = allTs.length ? Math.min(...allTs) : 0;
-  const maxTs = allTs.length ? Math.max(...allTs) : 1;
-  const spanTs = Math.max(1, maxTs - minTs);
-  const xFromTs = (ts) => ts === null ? MARGIN : MARGIN + ((ts - minTs) / spanTs) * usable * graphState.scale;
-
-  let svg = `<svg id="timeline-graph-svg" xmlns="http://www.w3.org/2000/svg" width="100%" height="${SVG_H}" viewBox="0 0 ${trackW} ${SVG_H}" data-min-ts="${minTs}" data-span-ts="${spanTs}" data-usable="${usable}" data-margin="${MARGIN}" data-line-y="${LINE_Y}" data-card-w="0" data-tlid="${tlid}">
-    <g id="timeline-graph-content" transform="translate(${graphState.tx},0)">
-    <line id="timeline-axis-line" x1="${MARGIN}" y1="${LINE_Y}" x2="${MARGIN + usable * graphState.scale}" y2="${LINE_Y}" stroke="var(--border)" stroke-width="8" stroke-linecap="round" opacity="0.75" style="cursor:crosshair"/>
-    ${buildTimelineRulerSvg(minTs, maxTs, xFromTs, LINE_Y)}`;
-  for (let i = 0; i < evs.length; i++) {
-    const ev = evs[i], ec = ev.color_code || col, xi = xFromTs(startTs[i]);
-    const sTxt = fmtDate(ev.s_day, ev.s_month, ev.s_years, ev.s_hour, ev.s_minute);
-    // Mockup 04: event name + date alternate above/below the axis with a
-    // short connector tick, instead of tooltip-only dots.
-    const above = i % 2 === 0;
-    const tickY1 = above ? LINE_Y - 10 : LINE_Y + 10;
-    const tickY2 = above ? LINE_Y - 26 : LINE_Y + 26;
-    const nameY = above ? LINE_Y - 42 : LINE_Y + 42;
-    const dateY = above ? LINE_Y - 30 : LINE_Y + 56;
-    // data-event-tick/-label/-date carry the same start-ts key as the dot so
-    // updateTimelineGraphX() (pan/zoom) repositions the whole cluster together
-    // — without these, only the dot moved on zoom and the name/date/tick
-    // connector were left behind at their original x (Plan part3 #1).
-    svg += `<line data-event-tick="${ev.id}" data-start-ts="${startTs[i] || ''}" x1="${xi}" y1="${tickY1}" x2="${xi}" y2="${tickY2}" stroke="var(--border)" stroke-width="1"/>
-      <text data-event-label="${ev.id}" data-start-ts="${startTs[i] || ''}" x="${xi}" y="${nameY}" text-anchor="middle" fill="var(--t1)" font-size="12" style="cursor:pointer" onclick="toggleChroniclerInspector(${tlid},${ev.id})">${x(ev.event_name || '—')}</text>
-      <text data-event-date="${ev.id}" data-start-ts="${startTs[i] || ''}" x="${xi}" y="${dateY}" text-anchor="middle" fill="var(--t3)" font-size="10">${x(sTxt)}</text>
-      <circle data-event-dot="${ev.id}" data-start-ts="${startTs[i] || ''}" cx="${xi}" cy="${LINE_Y}" r="7" fill="${ec}" style="cursor:pointer" onclick="openChroniclerEventIconPopup(${ev.id},this,${tlid})"><title>${x(ev.event_name || '')} — ${x(sTxt)}</title></circle>`;
-  }
-  svg += `</g></svg>`;
-
-  // Plan part3 #2: clicking a node selects it and shows an editable
-  // inspector below the graph instead of only opening the full modal.
-  let inspHtml = '';
-  const selEv = inspectorEventId ? evs.find(e => e.id === inspectorEventId) : null;
-  if (selEv) {
-    inspHtml = `<div class="chr-insp-row open" style="margin-top:14px">
-      <div class="ph"><h4>${x(selEv.event_name || t('name'))}</h4>
-        <button class="btn btn-g btn-i" onclick="toggleChroniclerInspector(${tlid},${selEv.id})" title="${t('close')}">${I.close}</button>
-      </div>
-      <div class="chr-insp-body" id="chr-oneline-insp">${await buildChroniclerEventInspectorHtml(selEv, tlid)}</div>
-    </div>`;
-  }
-  return `<div class="timeline-graph-board" id="timeline-graph-board" style="height:${SVG_H}px">${svg}<div id="timeline-axis-tip" class="timeline-axis-tip hidden"></div></div>${inspHtml}`;
-}
-
-// Dashed connectors join events that share the exact same start date
-// (same timeline_date row id, from api.timeline.getOrCreateDate's dedupe) —
-// the natural definition of "the same moment" across two lines.
-function buildChroniclerCompareHtml(evsA, evsB, key, colA, colB) {
-  const MARGIN = 80, LINE_Y_A = 90, LINE_Y_B = 260, SVG_H = 340;
-  const hostW = q('#main-inner')?.offsetWidth || 900;
-  const trackW = Math.max(hostW, 900);
-  const usable = trackW - (2 * MARGIN);
-  const graphState = timelineGraphState[key] ||= { scale: 1, tx: 0, yOffsets: {} };
-  const tsOf = (ev) => timelineTsFromParts(ev.s_day, ev.s_month, ev.s_years, ev.s_hour, ev.s_minute);
-  const allTs = [...evsA, ...evsB].map(tsOf).filter(ts => ts !== null);
-  const minTs = allTs.length ? Math.min(...allTs) : 0;
-  const maxTs = allTs.length ? Math.max(...allTs) : 1;
-  const spanTs = Math.max(1, maxTs - minTs);
-  const xFromTs = (ts) => ts === null ? MARGIN : MARGIN + ((ts - minTs) / spanTs) * usable * graphState.scale;
-
-  let svg = `<svg id="timeline-graph-svg" xmlns="http://www.w3.org/2000/svg" width="100%" height="${SVG_H}" viewBox="0 0 ${trackW} ${SVG_H}" data-min-ts="${minTs}" data-span-ts="${spanTs}" data-usable="${usable}" data-margin="${MARGIN}" data-line-y="${LINE_Y_A}" data-card-w="0" data-tlid="${key}">
-    <g id="timeline-graph-content" transform="translate(${graphState.tx},0)">
-    <line id="timeline-axis-line" x1="${MARGIN}" y1="${LINE_Y_A}" x2="${MARGIN + usable * graphState.scale}" y2="${LINE_Y_A}" stroke="var(--border)" stroke-width="8" stroke-linecap="round" opacity="0.75"/>
-    <line x1="${MARGIN}" y1="${LINE_Y_B}" x2="${MARGIN + usable * graphState.scale}" y2="${LINE_Y_B}" stroke="var(--border)" stroke-width="8" stroke-linecap="round" opacity="0.75"/>
-    ${buildTimelineRulerSvg(minTs, maxTs, xFromTs, (LINE_Y_A + LINE_Y_B) / 2)}`;
-
-  for (const evA of evsA) {
-    const evB = evsB.find(e => e.start_at === evA.start_at);
-    if (!evB) continue;
-    const aTs = tsOf(evA), bTs = tsOf(evB);
-    svg += `<line class="tl-cmp-link" data-a-ts="${aTs}" data-b-ts="${bTs}" x1="${xFromTs(aTs)}" y1="${LINE_Y_A}" x2="${xFromTs(bTs)}" y2="${LINE_Y_B}" stroke="var(--accent)" stroke-width="2" stroke-dasharray="5,4" opacity="0.85"/>`;
-  }
-  for (const ev of evsA) {
-    const ts = tsOf(ev), ec = ev.color_code || colA, sTxt = fmtDate(ev.s_day, ev.s_month, ev.s_years, ev.s_hour, ev.s_minute);
-    svg += `<circle data-event-dot="${ev.id}" data-start-ts="${ts || ''}" cx="${xFromTs(ts)}" cy="${LINE_Y_A}" r="7" fill="${ec}" style="cursor:pointer" onclick="openChroniclerEventModal(${ev.timeline_id},${ev.id})"><title>${x(ev.event_name || '')} — ${x(sTxt)}</title></circle>`;
-  }
-  for (const ev of evsB) {
-    const ts = tsOf(ev), ec = ev.color_code || colB, sTxt = fmtDate(ev.s_day, ev.s_month, ev.s_years, ev.s_hour, ev.s_minute);
-    svg += `<circle data-event-dot="${ev.id}" data-start-ts="${ts || ''}" cx="${xFromTs(ts)}" cy="${LINE_Y_B}" r="7" fill="${ec}" style="cursor:pointer" onclick="openChroniclerEventModal(${ev.timeline_id},${ev.id})"><title>${x(ev.event_name || '')} — ${x(sTxt)}</title></circle>`;
-  }
-  svg += `</g></svg>`;
-  return `<div class="timeline-graph-board" id="timeline-graph-board" style="height:${SVG_H}px">${svg}<div id="timeline-axis-tip" class="timeline-axis-tip hidden"></div></div>`;
-}
-
-// ═══ Calendar view (Plan part5 #3) ═════════════════════════════════════
-// A user-configurable calendar (days/week, days/month, months/year, custom
-// day/month names — stored as a JSON blob under module_ui.calendarConfig,
-// same convention migrate_v3.js already uses for filterDef). Buckets
-// events by their RAW (years,month,day) ints — deliberately not routed
-// through Date.UTC/timelineTsFromParts, which would normalize a fictional
-// calendar's own month/day counts into a real Gregorian one.
-function navChroniclerCalendar(delta) {
-  const data = S.chroniclerData;
-  const config = chroniclerCalendarConfig();
-  let m = (data.calViewMonth || 1) + delta, y = data.calViewYear || 0;
-  if (m > config.monthsPerYear) { m = 1; y++; }
-  else if (m < 1) { m = config.monthsPerYear; y--; }
-  data.calViewMonth = m; data.calViewYear = y;
-  mountChroniclerGraph();
-}
-
-function toggleChroniclerCalendarSettings() {
-  S.chroniclerData.calSettingsOpen = !S.chroniclerData.calSettingsOpen;
-  mountChroniclerGraph();
-}
-
-function buildChroniclerCalendarSettingsHtml(config) {
-  return `<div class="chr-cal-settings" data-no-i18n>
-    <div class="fg"><label>Days per week</label><input id="chr-cal-dpw" type="number" min="1" value="${config.daysPerWeek}"></div>
-    <div class="fg"><label>Days per month</label><input id="chr-cal-dpm" type="number" min="1" value="${config.daysPerMonth}"></div>
-    <div class="fg"><label>Months per year</label><input id="chr-cal-mpy" type="number" min="1" value="${config.monthsPerYear}"></div>
-    <div class="fg"><label>Day names (comma-separated)</label><input id="chr-cal-dn" value="${x(config.dayNames.join(','))}"></div>
-    <div class="fg"><label>Month names (comma-separated, optional)</label><input id="chr-cal-mn" value="${x(config.monthNames.join(','))}"></div>
-    <div class="mfoot"><button class="btn btn-p" onclick="saveChroniclerCalendarConfig()">${t('save')}</button></div>
-  </div>`;
-}
-
-async function saveChroniclerCalendarConfig() {
-  const config = {
-    daysPerWeek: Math.max(1, Number(q('#chr-cal-dpw')?.value) || 7),
-    daysPerMonth: Math.max(1, Number(q('#chr-cal-dpm')?.value) || 30),
-    monthsPerYear: Math.max(1, Number(q('#chr-cal-mpy')?.value) || 12),
-    dayNames: (q('#chr-cal-dn')?.value || '').split(',').map(s => s.trim()).filter(Boolean),
-    monthNames: (q('#chr-cal-mn')?.value || '').split(',').map(s => s.trim()).filter(Boolean),
-  };
-  const data = S.chroniclerData;
-  data.calendarConfig = config;
-  data.calSettingsOpen = false;
-  await api.module.setUi(data.moduleId, 'calendarConfig', JSON.stringify(config));
-  await mountChroniclerGraph();
-  toast(t('saved'), 'ok');
-}
-
-function buildChroniclerCalendarHtml(evs, config, data) {
-  const { daysPerWeek, daysPerMonth, monthsPerYear, dayNames, monthNames } = config;
-  const year = data.calViewYear || 0, month = data.calViewMonth || 1;
-  const monthLabel = monthNames[month - 1] || `Month ${month}`;
-  const byDay = {};
-  for (const ev of evs) {
-    if (ev.s_years === year && ev.s_month === month && ev.s_day) {
-      (byDay[ev.s_day] ||= []).push(ev);
-    }
-  }
-  const headerRow = Array.from({ length: daysPerWeek }, (_, i) =>
-    `<div class="chr-cal-dowcell">${x(dayNames[i] || `D${i + 1}`)}</div>`).join('');
-  let cells = '';
-  for (let day = 1; day <= daysPerMonth; day++) {
-    const dayEvs = byDay[day] || [];
-    cells += `<div class="chr-cal-cell">
-      <div class="chr-cal-daynum">${day}</div>
-      ${dayEvs.map(ev => `<div class="chr-cal-ev" style="background:${ev.color_code || '#06b6d4'}" onclick="openChroniclerEventIconPopup(${ev.id},this,${ev.timeline_id})" title="${x(ev.event_name || '')}">${x(ev.event_name || '—')}</div>`).join('')}
-    </div>`;
-  }
-  const settingsForm = data.calSettingsOpen ? buildChroniclerCalendarSettingsHtml(config) : '';
-  return `<div class="chr-calendar">
-    <div class="classifier-toolbar" style="margin-bottom:10px">
-      <button class="btn btn-s btn-i" onclick="navChroniclerCalendar(-1)">‹</button>
-      <span class="vlbl" data-no-i18n>${x(monthLabel)} · ${year}${monthsPerYear ? ` / ${monthsPerYear}` : ''}</span>
-      <button class="btn btn-s btn-i" onclick="navChroniclerCalendar(1)">›</button>
-      <button class="btn btn-g btn-i" onclick="toggleChroniclerCalendarSettings()" title="Calendar settings">${I.edit}</button>
-    </div>
-    ${settingsForm}
-    <div class="chr-cal-grid" style="grid-template-columns:repeat(${daysPerWeek},1fr)">${headerRow}${cells}</div>
-  </div>`;
-}
+// The calendar view, its Custom-calendar panel and both setup wizards moved to
+// mod/chronicler-calendar.js (Process 8 part 1) — see that file's header.
 
 // Plan part3 #2.1/#2.2: each row expands into an inline, autosaving
 // inspector instead of jumping to the modal — and since inspectorEventId is
@@ -453,19 +368,20 @@ async function buildChroniclerEventListHtml(evs, tlid, col, inspectorEventId) {
     const hasEnd = !!(ev.e_day && ev.e_month && ev.e_years);
     const dateTxt = hasEnd ? `${sTxt} - ${fmtDate(ev.e_day, ev.e_month, ev.e_years, ev.e_hour, ev.e_minute)}` : sTxt;
     const open = inspectorEventId === ev.id;
+    // Process 8 part 1: name, date and chevron share ONE row — the date used to
+    // sit on a second line, which made two adjacent collapsed events read as
+    // one four-line block. Delete moved into the expanded body (below), so the
+    // collapsed row carries nothing destructive.
     html += `<div class="chr-insp-row${open ? ' open' : ''}">
       <div class="objrow" onclick="toggleChroniclerInspector(${tlid},${ev.id})">
         <div class="odot" style="background:${ec};cursor:pointer" onclick="event.stopPropagation();openChroniclerEventIconPopup(${ev.id},this,${tlid})"></div>
-        <div style="flex:1;min-width:0">
-          <div class="oname">${x(ev.event_name || '—')}</div>
-          <div style="font-size:calc(12px * var(--fsc,1));color:var(--t3);margin-top:2px">${x(dateTxt)}</div>
-        </div>
+        <div class="oname chr-ev-name">${x(ev.event_name || '—')}</div>
+        <div class="chr-ev-date">${x(dateTxt)}</div>
         <svg class="icon tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="${open ? '6 9 12 15 18 9' : '9 18 15 12 9 6'}"/></svg>
-        <div class="acts">
-          <button class="btn btn-g btn-i" onclick="event.stopPropagation();deleteChroniclerEvent(${ev.id},${tlid})" style="color:var(--danger)">${I.delete}</button>
-        </div>
       </div>
-      ${open ? `<div class="chr-insp-body" id="chr-insp-body-${ev.id}">${await buildChroniclerEventInspectorHtml(ev, tlid)}</div>` : ''}
+      ${open ? `<div class="chr-insp-body" id="chr-insp-body-${ev.id}">${await buildChroniclerEventInspectorHtml(ev, tlid)}
+        <div class="chr-insp-foot"><button class="btn btn-d" onclick="deleteChroniclerEvent(${ev.id},${tlid})">${I.delete} ${t('delete')}</button></div>
+      </div>` : ''}
     </div>`;
   }
   html += `</div>`;
