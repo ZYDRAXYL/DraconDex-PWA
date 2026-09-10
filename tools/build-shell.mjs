@@ -30,6 +30,38 @@ fs.mkdirSync(dist, { recursive: true });
 fs.cpSync(path.join(appSrc, 'flutter/web/icons'), path.join(dist, 'icons'), { recursive: true });
 fs.copyFileSync(path.join(appSrc, 'flutter/web/favicon.png'), path.join(dist, 'favicon.png'));
 
+// ── the tablet lane ────────────────────────────────────────────────────────
+// /t/ is the SAME Flutter build as /m/, not a third compile. dist/m is ~50 MB;
+// copying it would double the deploy for a build whose only difference is which
+// shell its own responsive layout picks.
+//
+// The trick is Flutter's <base href>: this page keeps m/'s base, so every asset
+// it loads — main.dart.js, canvaskit, the wasm — is fetched from /m/ and served
+// from one copy. Only this ~2 KB HTML file is per-lane.
+//
+// What /t/ actually buys, stated plainly: a stable URL and its own install
+// shortcut for tablets, and a place to pin the tablet profile so a tablet-sized
+// window is not treated as a large phone. The Flutter app is already responsive
+// by window size (verify.mjs exercises 1194x834), so a tablet reaching /m/ is
+// not broken — it just has no way to say "I am a tablet" and no distinct entry
+// point. window.__ddxLane is the hook for the former; nothing reads it yet.
+if (fs.existsSync(path.join(dist, 'm/index.html'))) {
+  const mobileHtml = fs.readFileSync(path.join(dist, 'm/index.html'), 'utf8');
+  const tabletHtml = mobileHtml.replace(
+    '<meta charset="UTF-8">',
+    `<meta charset="UTF-8">
+  <!-- Served from /t/ but loading /m/'s assets via the <base href> above. -->
+  <script>window.__ddxLane = 'tablet';</script>`
+  );
+  fs.mkdirSync(path.join(dist, 't'), { recursive: true });
+  fs.writeFileSync(path.join(dist, 't/index.html'), tabletHtml);
+  console.log(`[shell] tablet lane -> dist/t/index.html (${Buffer.byteLength(tabletHtml)} bytes, assets shared with dist/m)`);
+} else {
+  // build-mobile skips itself when no Flutter SDK is present; the tablet lane
+  // has nothing to point at, and saying so beats emitting a page that 404s.
+  console.warn('[shell] no dist/m — skipping the tablet lane');
+}
+
 // ── manifest ───────────────────────────────────────────────────────────────
 // start_url is the router, not a lane: an install made on a phone and one made
 // on a desktop are the same app, and each launch re-picks the right front-end
@@ -38,7 +70,11 @@ const manifest = {
   name: 'DraconDex',
   short_name: 'DraconDex',
   description: 'จัดการข้อมูลโลกในนิยาย — ตัวละคร สถานที่ ไทม์ไลน์ ความสัมพันธ์ และโน้ต',
-  id: '/PWA-DraconDex/',
+  // Moves with the repo: the Pages origin changed from ldktc.github.io to
+  // zydraxyl.github.io in the same migration, so no existing install could
+  // have carried over anyway. Do not change it again without that excuse —
+  // a new id makes every install a different app to the browser.
+  id: '/DraconDex-PWA/',
   start_url: './',
   scope: './',
   display: 'standalone',
@@ -58,6 +94,7 @@ const manifest = {
   ],
   shortcuts: [
     { name: 'เดสก์ท็อป', short_name: 'Desktop', url: './d/', icons: [{ src: 'icons/Icon-192.png', sizes: '192x192' }] },
+    { name: 'แท็บเล็ต', short_name: 'Tablet', url: './t/', icons: [{ src: 'icons/Icon-192.png', sizes: '192x192' }] },
     { name: 'มือถือ', short_name: 'Mobile', url: './m/', icons: [{ src: 'icons/Icon-192.png', sizes: '192x192' }] },
   ],
 };
@@ -104,7 +141,8 @@ const router = `<!DOCTYPE html>
   <div id="status"></div>
   <div class="lanes">
     <a class="lane" href="d/" data-lane="d"><b>เดสก์ท็อป</b><span>หน้าจอใหญ่ คีย์บอร์ด เมาส์ — เวอร์ชันเดียวกับแอป Windows / macOS</span></a>
-    <a class="lane" href="m/" data-lane="m"><b>มือถือ / แท็บเล็ต</b><span>ทัชสกรีน — เวอร์ชันเดียวกับแอป iOS / Android</span></a>
+    <a class="lane" href="t/" data-lane="t"><b>แท็บเล็ต / iPad</b><span>จอกลาง ทัชสกรีน — เวอร์ชันเดียวกับแอปมือถือ แต่จัดหน้าแบบแท็บเล็ต</span></a>
+    <a class="lane" href="m/" data-lane="m"><b>มือถือ</b><span>ทัชสกรีน — เวอร์ชันเดียวกับแอป iOS / Android</span></a>
   </div>
   <div class="note">DraconDex ${source.version} · เปิดหน้านี้ด้วย <code>?lane=choose</code> เพื่อเลือกใหม่ได้เสมอ</div>
 </div>
@@ -119,11 +157,27 @@ const router = `<!DOCTYPE html>
   // reports itself as a desktop Safari but is a tablet by every other measure.
   function detect(){
     var ua = navigator.userAgent;
+    // iPadOS reports itself as desktop Safari and is a tablet by every other
+    // measure, so it needs the touch-points tiebreaker. It used to be detected
+    // only to push it into 'm'; now it gets a lane of its own.
     var iPadOS = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
-    var mobileUA = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/.test(ua) || iPadOS;
+    var tabletUA = /iPad|Tablet|Nexus 7|Nexus 10|SM-T|Kindle|Silk/.test(ua) || iPadOS
+      || (/Android/.test(ua) && !/Mobile/.test(ua));   // Android drops "Mobile" on tablets
+    var phoneUA = /Android.*Mobile|iPhone|iPod|Windows Phone/.test(ua);
     var coarse = matchMedia('(pointer: coarse)').matches;
-    var narrow = Math.min(screen.width, screen.height) < 900;
-    return (mobileUA || (coarse && narrow)) ? 'm' : 'd';
+    // any-pointer, not pointer: a touchscreen laptop has a coarse PRIMARY
+    // pointer while a mouse or trackpad is still attached, and it wants the
+    // desktop lane. Asking "is a fine pointer available at all" separates it
+    // from a tablet, which has none.
+    var hasFine = matchMedia('(any-pointer: fine)').matches;
+    var shortSide = Math.min(screen.width, screen.height);
+
+    if (phoneUA) return 'm';
+    if (tabletUA) return 't';
+    // No useful UA: go by the questions the Flutter build is designed around —
+    // is it touch-first, is there a real pointer, and how much room is there.
+    if (coarse && !hasFine) return shortSide < 600 ? 'm' : 't';
+    return shortSide < 600 ? 'm' : 'd';
   }
 
   function go(lane){
@@ -136,12 +190,13 @@ const router = `<!DOCTYPE html>
   });
 
   if (asked === 'choose') return;
-  if (asked === 'd' || asked === 'm') { go(asked); return; }
+  if (asked === 'd' || asked === 't' || asked === 'm') { go(asked); return; }
 
   var saved = null;
   try { saved = localStorage.getItem(KEY); } catch (e) {}
-  var lane = (saved === 'd' || saved === 'm') ? saved : detect();
-  document.getElementById('status').textContent = 'กำลังเปิด' + (lane === 'm' ? 'เวอร์ชันมือถือ' : 'เวอร์ชันเดสก์ท็อป') + '…';
+  var lane = (saved === 'd' || saved === 't' || saved === 'm') ? saved : detect();
+  var laneName = { d: 'เวอร์ชันเดสก์ท็อป', t: 'เวอร์ชันแท็บเล็ต', m: 'เวอร์ชันมือถือ' }[lane];
+  document.getElementById('status').textContent = 'กำลังเปิด' + laneName + '…';
   // A tick of daylight, so this page is visible (and its links usable) if a
   // lane ever fails to load.
   setTimeout(function(){ go(lane); }, 60);
@@ -173,6 +228,9 @@ const precache = [
   ...walk(path.join(dist, 'icons')).map((f) => `icons/${f}`),
   ...walk(path.join(dist, 'src')).map((f) => `src/${f}`),
   ...walk(path.join(dist, 'd')).map((f) => `d/${f}`).filter((f) => !f.endsWith('.map')),
+  // The tablet lane is one small HTML file; its assets live under m/, which
+  // ships its own service worker and is deliberately not precached here.
+  ...(fs.existsSync(path.join(dist, 't/index.html')) ? ['t/index.html'] : []),
 ];
 
 const version = crypto.createHash('sha1')
@@ -233,7 +291,10 @@ self.addEventListener('fetch', (event) => {
     } catch (err) {
       // Offline and not cached: a navigation still gets the app it asked for.
       if (req.mode === 'navigate') {
-        return (await caches.match(url.pathname.startsWith(scopePath + 'd/') ? scopePath + 'd/index.html' : scopePath)) ||
+        const laneIndex = url.pathname.startsWith(scopePath + 'd/') ? scopePath + 'd/index.html'
+          : url.pathname.startsWith(scopePath + 't/') ? scopePath + 't/index.html'
+          : scopePath;
+        return (await caches.match(laneIndex)) ||
           new Response('offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
       }
       throw err;

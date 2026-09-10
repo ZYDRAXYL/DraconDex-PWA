@@ -1,21 +1,31 @@
-name: Rebuild from App-DraconDex
+name: Rebuild from the app repos
 
-# Rebuilds both lanes against the current App-DraconDex and opens a PR with the
-# result. This is the "the app moved on, catch the PWA up" button.
+# Rebuilds every lane against the current app sources and opens a PR with the
+# result. This is the "the apps moved on, catch the PWA up" button.
 #
-# It needs one secret, because App-DraconDex is a private repository:
+# Since the 2026-09-10 multi-repo split there are TWO sources, not one:
+#   ZYDRAXYL/DraconDex-EXE  the Electron front-end  -> the /d/ lane
+#   ZYDRAXYL/DraconDex-APK  the Flutter front-end   -> the /m/ and /t/ lanes
+# Both are private, so both need a readable token:
 #
-#   APP_SOURCE_TOKEN — a token that can read LDKTC/App-DraconDex
+#   APP_SOURCE_TOKEN — a token that can read BOTH repositories
 #
-# Without it the checkout step fails immediately and says so, rather than
-# building something stale. The same rebuild can always be done locally with
-# `npm run build -- --local ../App-DraconDex`, which needs no token at all.
+# Without it the checkout fails immediately and says so, rather than building
+# something stale. The same rebuild can always be done locally against a
+# checkout with `npm run build -- --local <dir>`, which needs no token at all.
+#
+# Note the lanes are not independent: /t/ is the same Flutter build as /m/,
+# served through one small HTML file, so an APK refresh moves both.
 
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        description: 'App-DraconDex ref to build from'
+      exe_ref:
+        description: 'DraconDex-EXE ref to build from'
+        default: 'main'
+        required: false
+      apk_ref:
+        description: 'DraconDex-APK ref to build from'
         default: 'main'
         required: false
 
@@ -36,24 +46,43 @@ jobs:
       - name: Check the source token is present
         run: |
           if [ -z "${{ secrets.APP_SOURCE_TOKEN }}" ]; then
-            echo "::error::APP_SOURCE_TOKEN is not set — this workflow cannot read the private App-DraconDex repository."
+            echo "::error::APP_SOURCE_TOKEN is not set — this workflow cannot read the private DraconDex-EXE and DraconDex-APK repositories. Create a token that can read both and save it as the APP_SOURCE_TOKEN secret, then re-run."
             exit 1
           fi
 
-      - name: Check out App-DraconDex
+      # Both repos are assembled into ONE .app-checkout tree, because that is
+      # the shape fetch-app.mjs --local expects and the shape every build tool
+      # and all 13 shim/*.js files were written against. EXE contributes
+      # electron/ + src/ + package.json; APK contributes flutter/.
+      - name: Check out DraconDex-EXE
         uses: actions/checkout@v5
         with:
-          repository: LDKTC/App-DraconDex
-          ref: ${{ inputs.ref }}
+          repository: ZYDRAXYL/DraconDex-EXE
+          ref: ${{ inputs.exe_ref }}
           token: ${{ secrets.APP_SOURCE_TOKEN }}
           path: .app-checkout
+
+      - name: Check out DraconDex-APK
+        uses: actions/checkout@v5
+        with:
+          repository: ZYDRAXYL/DraconDex-APK
+          ref: ${{ inputs.apk_ref }}
+          token: ${{ secrets.APP_SOURCE_TOKEN }}
+          path: .apk-checkout
+
+      - name: Assemble the source tree
+        run: |
+          rm -rf .app-checkout/flutter
+          mv .apk-checkout/flutter .app-checkout/flutter
+          test -f .app-checkout/electron/main.js || { echo "::error::DraconDex-EXE checkout has no electron/main.js"; exit 1; }
+          test -f .app-checkout/flutter/pubspec.yaml || { echo "::error::DraconDex-APK checkout has no flutter/pubspec.yaml"; exit 1; }
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       # The mobile lane is the Flutter web target of the same lib/ that ships on
-      # Android and iOS; the version here tracks App-DraconDex's own web build.
+      # Android and iOS; the version here tracks DraconDex-EXE's own web build.
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.4'
@@ -75,14 +104,17 @@ jobs:
       - name: Open a pull request with the rebuilt site
         uses: peter-evans/create-pull-request@v7
         with:
-          branch: rebuild/app-${{ inputs.ref }}
-          title: 'Rebuild the PWA from App-DraconDex ${{ inputs.ref }}'
+          branch: rebuild/app-${{ inputs.exe_ref }}-${{ inputs.apk_ref }}
+          title: 'Rebuild the PWA from EXE ${{ inputs.exe_ref }} / APK ${{ inputs.apk_ref }}'
           body: |
-            Rebuilt `dist/` from `LDKTC/App-DraconDex@${{ inputs.ref }}`.
+            Rebuilt `dist/` from:
 
-            Both lanes were driven in a real browser by `npm run verify` before
-            this PR was opened — see the workflow run for the screenshots.
-          commit-message: 'Rebuild the PWA from App-DraconDex ${{ inputs.ref }}'
+            - `ZYDRAXYL/DraconDex-EXE@${{ inputs.exe_ref }}` — the `/d/` desktop lane
+            - `ZYDRAXYL/DraconDex-APK@${{ inputs.apk_ref }}` — the `/m/` phone and `/t/` tablet lanes
+
+            All three lanes were driven in a real browser by `npm run verify`
+            before this PR was opened — see the workflow run for the screenshots.
+          commit-message: 'Rebuild the PWA from EXE ${{ inputs.exe_ref }} / APK ${{ inputs.apk_ref }}'
           add-paths: |
             dist
             app-source.json

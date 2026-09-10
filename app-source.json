@@ -1,6 +1,29 @@
 {
-  "repo": "https://github.com/LDKTC/App-DraconDex.git",
-  "ref": "main",
-  "commit": "c0f52acc3ce23e86bda0925328266c1a4d5bb0fc",
-  "version": "4.13.2"
+  "_comment": "Where the PWA's sources come from. This was one repo until the 2026-09-10 multi-repo split; now the Electron front-end, the Flutter front-end and the shared schema each live in their own repository, and fetch-app.mjs reassembles them into .app-src/ at the exact tree shape the build tools and all 13 shim/*.js files already expect. That reassembly is the seam: as long as .app-src looks like the old monorepo, nothing downstream had to change.",
+  "sources": {
+    "EXE": {
+      "repo": "https://github.com/ZYDRAXYL/DraconDex-EXE.git",
+      "ref": "main",
+      "commit": null,
+      "paths": [
+        "electron/index.html",
+        "electron/main.js",
+        "electron/preload.js",
+        "electron/database.js",
+        "electron/css",
+        "electron/src",
+        "electron/vendor",
+        "src/assets/brand",
+        "src/schema",
+        "package.json"
+      ],
+      "versionFrom": "package.json"
+    },
+    "APK": {
+      "repo": "https://github.com/ZYDRAXYL/DraconDex-APK.git",
+      "ref": "main",
+      "commit": null,
+      "paths": ["flutter"]
+    }
+  }
 }

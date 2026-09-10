@@ -2,7 +2,7 @@
 // The desktop lane: DraconDex's Electron build, running in a browser tab.
 //
 // The renderer, its CSS and the preload contract are shipped exactly as they
-// are in App-DraconDex — no fork, no edits. What gets built here is the piece
+// are in DraconDex-EXE — no fork, no edits. What gets built here is the piece
 // underneath them: one bundle (ddx-bridge.js) containing main.js, the whole
 // src/db data layer, and the browser shims from shim/ that stand in for
 // Electron, the filesystem, and node-sqlite3-wasm.
@@ -72,7 +72,7 @@ const result = await esbuild.build({
   inject: [shim('globals.js')],
   define: { 'globalThis.__DDX_VERSION__': JSON.stringify(source.version) },
   minify: true,
-  // Off for the committed build. The bundle contains App-DraconDex's main
+  // Off for the committed build. The bundle contains DraconDex-EXE's main
   // process and its whole data layer, and that repository is private — a
   // source map on a public site would republish all of it in readable form.
   // DDX_SOURCEMAP=1 turns it on for local debugging.
