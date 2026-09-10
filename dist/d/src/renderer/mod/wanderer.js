@@ -45,18 +45,25 @@ async function loadWandererData(m) {
   }
   // A Chronicler can own several timeline lines — a MapEvent may bind to an
   // event on any of them, so the strip shows the merged, sorted set.
-  let timeline = null, events = [];
+  // The strip is drawn in the referenced Chronicler's calendar, not in this
+  // Wanderer's (it has none) and not in whichever Chronicler happens to be
+  // open — so read that module's own spec and thread it through.
+  let timeline = null, events = [], calendarSpec = calSpecNormalize(null);
   if (timelineModuleId && chroniclers.find(c => c.id === timelineModuleId)) {
     const lines = await api.timeline.getModuleTimelines(timelineModuleId);
     timeline = lines[0] || null;
+    const tlUi = await api.module.getUi(timelineModuleId);
+    let rawCal = null;
+    try { rawCal = tlUi.calendarConfig ? JSON.parse(tlUi.calendarConfig) : null; } catch (_) { rawCal = null; }
+    calendarSpec = calSpecNormalize(rawCal);
     const perLine = await Promise.all(lines.map(l => api.timeline.getEvents(l.id)));
-    events = sortChroniclerEvents(perLine.flat());
+    events = sortChroniclerEvents(perLine.flat(), calendarSpec);
   }
   const links = await resolveWandererLinks(await api.wanderer.list(m.id));
   let openAreaId = prev?.openAreaId ?? null;
   if (openAreaId && !areas.find(a => a.id === openAreaId)) openAreaId = null;
   S.map = map;
-  S.wandererData = { moduleId: m.id, locators, chroniclers, mapModuleId, timelineModuleId, map, areas, timeline, events, links, view, openAreaId };
+  S.wandererData = { moduleId: m.id, locators, chroniclers, mapModuleId, timelineModuleId, map, areas, timeline, events, links, view, openAreaId, calendarSpec };
 }
 
 async function setWandererRef(moduleId, key, value) {

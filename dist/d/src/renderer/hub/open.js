@@ -131,6 +131,7 @@ function buildModuleDetailHtml(m) {
         <h2 style="margin:0;font-size:1.15em;display:flex;align-items:center;gap:8px">
           <span class="kicon" style="color:${x(col)};cursor:pointer" onclick="event.stopPropagation();openModuleIconPopup(${m.id},this)">${moduleIconHtml(m)}</span>
           ${nameHtml}
+          ${m.handle ? `<span class="module-handle" data-no-i18n title="${t('moduleHandle')}">@${x(m.handle)}</span>` : ''}
           <span class="kind-chip" data-no-i18n>${x(kindLabel(m.kind))}${m.kind === 'classifier' && m.cat_type ? ` · ${m.cat_type.charAt(0).toUpperCase()}${m.cat_type.slice(1)}` : ''}</span>
         </h2>
         <div class="mtags">${tagChips}${linkChip}<button class="btn btn-g btn-i" onclick="openModuleTagPopup(${m.id}, this)" title="${t('tagLink')}">${I.plus}</button></div>

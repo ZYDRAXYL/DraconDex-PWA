@@ -24,9 +24,12 @@ const fmtDate = (d,m,y,hh,mm) => {
   const ts = (hh||mm) ? ` ${String(hh||0).padStart(2,'0')}:${String(mm||0).padStart(2,'0')}` : '';
   return `${d}/${m}/${y}${ts}`;
 };
+// The graph axis's hover tooltip. Takes a calendar ordinal, not a JS
+// timestamp — reading it back through `new Date()` reported real-world dates
+// for a fictional calendar (and, for years under 100, dates 1900 years off).
 const fmtTimelinePoint = (ts) => {
-  const d = new Date(ts);
-  return `${d.getUTCDate()}/${d.getUTCMonth()+1}/${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
+  const p = calFromOrdinal(timelineCalendarSpec(), ts);
+  return `${p.d}/${p.m}/${p.y} ${String(p.h).padStart(2,'0')}:${String(p.mi).padStart(2,'0')}`;
 };
 
 let _tt;

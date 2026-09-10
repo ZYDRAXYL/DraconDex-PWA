@@ -2,15 +2,20 @@
 // modal (mod/chronicler.js) with the timeline domain, not Director-specific.
 function dateInputsHTML(prefix,ev,dayKey,mKey,yKey,hKey,minKey,onchangeFn=''){
   const oc = onchangeFn ? ` onchange="${onchangeFn}"` : '';
+  // A day need not have 24 hours, nor an hour 60 minutes, once the calendar
+  // is user-defined — these were hardcoded max="23"/max="59".
+  const spec = timelineCalendarSpec();
+  const hoursPerDay = calCanonicalCount(spec, 'day') || 24;
+  const minsPerHour = calCanonicalCount(spec, 'hour') || 60;
   return `<div class="date-row-inline">
     <input id="${prefix}-d" class="date-inp" type="number" placeholder="DD" min="1" value="${ev?ev[dayKey]||'':''}"${oc}>
     <span class="date-sep">/</span>
     <input id="${prefix}-m" class="date-inp" type="number" placeholder="MM" min="1" value="${ev?ev[mKey]||'':''}"${oc}>
     <span class="date-sep">/</span>
     <input id="${prefix}-y" class="date-inp date-inp-y" type="number" placeholder="YYYY" value="${ev?ev[yKey]||'':''}"${oc}>
-    <input id="${prefix}-h" class="date-inp" type="number" placeholder="HH" min="0" max="23" value="${ev?ev[hKey]||0:0}"${oc}>
+    <input id="${prefix}-h" class="date-inp" type="number" placeholder="HH" min="0" max="${hoursPerDay-1}" value="${ev?ev[hKey]||0:0}"${oc}>
     <span class="date-sep">:</span>
-    <input id="${prefix}-min" class="date-inp" type="number" placeholder="MM" min="0" max="59" value="${ev?ev[minKey]||0:0}"${oc}>
+    <input id="${prefix}-min" class="date-inp" type="number" placeholder="MM" min="0" max="${minsPerHour-1}" value="${ev?ev[minKey]||0:0}"${oc}>
   </div>`;
 }
 async function getDateFromInputs(prefix){
@@ -22,35 +27,41 @@ async function getDateFromInputs(prefix){
 
 // ── Shared graph builder (Chronicler, progress.md Phase 8, reuses this
 // exact SVG + bindTimelineGraphInteractions for its own Down-line view) ──
+// Which calendar the graphs are currently drawing in. Chronicler owns the
+// spec; Wanderer borrows the one belonging to whichever Chronicler module it
+// references. Falls back to the default so a caller with neither loaded (a
+// stray render, the Classifier's date attribute) still works.
+function timelineCalendarSpec(){
+  return S.chroniclerData?.calendarSpec || S.wandererData?.calendarSpec || calSpecNormalize(null);
+}
+
+// Absolute position of a date, in the calendar's own minutes. This used to be
+// Date.UTC, which for a fictional calendar was not merely imprecise but lossy:
+// it rolls over rather than clamping, so Date.UTC(1200,0,35) and
+// Date.UTC(1200,1,4) were the SAME instant and two distinct dates stacked on
+// one pixel. It also read years 0-99 as 1900+y, and the `!y` guard threw away
+// year 0 entirely, pinning those events to the axis's left edge.
+// Name and signature are unchanged — mod/chronicler-graph.js and
+// mod/wanderer.js call this in four places.
 function timelineTsFromParts(d,m,y,hh,min){
-  if(!d||!m||!y) return null;
-  return Date.UTC(Number(y), Number(m)-1, Number(d), Number(hh||0), Number(min||0), 0, 0);
+  return calToOrdinal(timelineCalendarSpec(), { y, m, d, h: hh, mi: min });
 }
 
 // Month/year tick marks along the axis so gaps read as a true time scale,
 // not just proportional dot spacing. Ticks carry data-tick-ts so
 // updateTimelineGraphX() (pan/zoom) can reposition them like everything else.
 function buildTimelineRulerSvg(minTs, maxTs, xFromTs, LINE_Y){
-  if(!(maxTs > minTs)) return '';
-  const spanDays = (maxTs-minTs)/86400000;
-  const byYear = spanDays > 365*4;
-  const start = new Date(minTs);
-  let cursor = byYear
-    ? Date.UTC(start.getUTCFullYear(), 0, 1)
-    : Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1);
+  // Ticks now step in the USER's units and carry the calendar's own month
+  // names. The old body was wholly Gregorian — 12 months implied by
+  // getUTCMonth(), 365*4 for the year/month threshold, 86400000 ms per day —
+  // so a fictional calendar got ticks labelled with real-world months nobody
+  // had typed, spaced by a year length it does not have.
+  const ticks = calRulerTicks(timelineCalendarSpec(), minTs, maxTs);
   let svg = '';
-  let guard = 0;
-  while(cursor <= maxTs && guard < 240){
-    guard++;
-    if(cursor >= minTs){
-      const cx = xFromTs(cursor);
-      const d = new Date(cursor);
-      const label = byYear ? String(d.getUTCFullYear()) : String(d.getUTCMonth()+1);
-      svg += `<line class="tl-ruler-tick" data-tick-ts="${cursor}" x1="${cx}" y1="${LINE_Y-14}" x2="${cx}" y2="${LINE_Y+14}" stroke="var(--border)" stroke-width="1.5" opacity="0.55"/>
-        <text class="tl-ruler-label" data-tick-ts="${cursor}" x="${cx}" y="${LINE_Y+30}" text-anchor="middle" font-size="10.5" fill="var(--t3)">${label}</text>`;
-    }
-    const d = new Date(cursor);
-    cursor = byYear ? Date.UTC(d.getUTCFullYear()+1, 0, 1) : Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+1, 1);
+  for(const tk of ticks){
+    const cx = xFromTs(tk.ordinal);
+    svg += `<line class="tl-ruler-tick" data-tick-ts="${tk.ordinal}" x1="${cx}" y1="${LINE_Y-14}" x2="${cx}" y2="${LINE_Y+14}" stroke="var(--border)" stroke-width="1.5" opacity="0.55"/>
+      <text class="tl-ruler-label" data-tick-ts="${tk.ordinal}" x="${cx}" y="${LINE_Y+30}" text-anchor="middle" font-size="10.5" fill="var(--t3)">${x(tk.label)}</text>`;
   }
   return svg;
 }

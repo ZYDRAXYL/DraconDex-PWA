@@ -58,7 +58,7 @@ async function qsBuildPool() {
     const src = typeof findModuleNode === 'function' ? findModuleNode(it.moduleId) : null;
     const major = src && src.parent_id != null ? findModuleNode(src.parent_id) : null;
     items.push({
-      key: it.key, name: it.name, color: it.color,
+      key: it.key, name: it.name, color: it.color, handle: it.handle || '',
       badge: QS_BADGE[it.kind] || it.kind,
       icon: I[QS_ICON_BY_KIND[it.kind]] || I.layer,
       moduleId: it.moduleId,
@@ -217,6 +217,7 @@ async function openQuickSwitcher(seed = '') {
           <span class="qs-icon">${e.icon}</span>
           <span class="dot" style="background:${e.color || 'var(--accent)'}"></span>
           <span class="name">${x(e.name)}</span>
+          ${e.handle ? `<span class="qs-handle" data-no-i18n>@${x(e.handle)}</span>` : ''}
           ${e.count ? `<span class="qs-lc" data-no-i18n>🔗 ${e.count}</span>` : ''}
           ${canPin ? `<span class="qs-pin" data-i="${i}" title="${t('qsPinHint')}">📌</span>` : ''}
           <span class="qs-crumb" data-no-i18n>${x(e.crumb)}</span>
@@ -237,8 +238,12 @@ async function openQuickSwitcher(seed = '') {
         .filter(e => e && qsInScope(e) && (!_qsKind || e.badge === _qsKind));
       _qsShown = (recent.length ? recent : pool).slice(0, 20);
     } else {
+      // Process 8 part 1: a module can also be found by its handle. Scored as
+      // a separate candidate and the better of the two wins, rather than
+      // fuzzy-matching over "name handle" as one string — that would let a
+      // query straddle the boundary and match neither field on its own.
       _qsShown = pool
-        .map(e => ({ e, s: fuzzyScore(qv, e.name) }))
+        .map(e => ({ e, s: Math.max(fuzzyScore(qv, e.name), e.handle ? fuzzyScore(qv, e.handle) : -1) }))
         .filter(r => r.s >= 0)
         .sort((a, b) => b.s - a.s)
         .slice(0, 50)

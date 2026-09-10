@@ -12,20 +12,33 @@ const NARRATOR_VIEWS = ['board', 'routes', 'reader', 'dialogue'];
 const NARRATOR_VIEW_LABEL = { board: 'Board', routes: 'Routes', reader: 'Reader', dialogue: 'Dialogue' };
 const narratorZoom = {}; // moduleId -> scale (board zoom persists per module per session)
 const narratorPan = {}; // moduleId -> {x,y} (Plan part5 #1 — pan is a translate now, not scrollLeft/scrollTop)
-const NARRATOR_LINK_TYPES = ['note', 'object', 'character', 'chapter', 'project', 'module', 'chat'];
+// The conversation/choice editor, the element-link picker and their
+// NARRATOR_LINK_TYPES allowlist live in mod/narrator-dialogue.js.
 
+// relations + entityIndex are fetched here rather than inside the link modal
+// so the conversation rows can render a linked element's name and owning
+// module synchronously (buildNarratorConvHtml is called from string-building
+// code that cannot await) — same reasoning as Classifier's
+// setClassifierLinkData cache (mod/classifier-detail.js).
 async function loadNarratorData(m) {
-  const [dialogues, edges, ui] = await Promise.all([
+  const [dialogues, edges, ui, relations, entityIndex] = await Promise.all([
     api.narrator.getDialogues(m.id),
     api.narrator.getEdges(m.id),
     api.module.getUi(m.id),
+    api.viewer.getRelations(S.nexus.id),
+    api.viewer.index(S.nexus.id),
   ]);
   const prev = (S.narratorData && S.narratorData.moduleId === m.id) ? S.narratorData : null;
-  let selectedId = prev?.selectedId || null;
+  // A [[sdlg_…]] link (or a Narrator link row elsewhere) lands here — same
+  // one-shot hand-off Author/Scribe use for their own item links.
+  let selectedId = S.pendingNarratorDialogue || prev?.selectedId || null;
+  S.pendingNarratorDialogue = null;
   if (selectedId && !dialogues.find(d => d.id === selectedId)) selectedId = null;
-  const talks = selectedId ? await api.narrator.getTalks(selectedId) : [];
+  const [talks, choiceOptions] = selectedId
+    ? await Promise.all([api.narrator.getTalks(selectedId), api.narrator.getChoiceOptions(selectedId)])
+    : [[], []];
   const view = NARRATOR_VIEWS.includes(ui.activeView) ? ui.activeView : 'board';
-  S.narratorData = { moduleId: m.id, dialogues, edges, talks, selectedId, edgeFrom: prev?.edgeFrom || null, view };
+  S.narratorData = { moduleId: m.id, dialogues, edges, talks, selectedId, edgeFrom: prev?.edgeFrom || null, view, relations, entityIndex, choiceOptions };
 }
 
 async function setNarratorView(view) {
@@ -68,7 +81,7 @@ function buildNarratorDialogueListHtml(d) {
         <div class="odot" style="background:${x(dl.color_code || '#6366f1')}"></div>
         <div style="flex:1;min-width:0">
           <div class="oname">${x(dl.name)}</div>
-          <div style="font-size:calc(12px * var(--fsc,1));color:var(--t3);margin-top:2px" data-no-i18n>${dl.speaker_count || 0} ${t('speaker')} · ${dl.talk_count || 0} ${t('conversation')}</div>
+          <div style="font-size:calc(12px * var(--fsc,1));color:var(--t3);margin-top:2px" data-no-i18n>${dl.speaker_count || 0} ${t('speaker')} · ${dl.talk_count || 0} ${t('conversation')}${dl.choice_count ? ` · ${dl.choice_count} ${t('choice')}` : ''}</div>
         </div>
         <svg class="icon tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="${open ? '6 9 12 15 18 9' : '9 18 15 12 9 6'}"/></svg>
       </div>
@@ -304,126 +317,6 @@ function startNarratorEdge(dialId) {
     n.classList.toggle('edge-from', Number(n.dataset.dial) === dialId));
 }
 
-// ── Conversation editor (right of the board) ────────────────────────────
-function buildNarratorConvHtml(d) {
-  const dl = d.dialogues.find(dd => dd.id === d.selectedId);
-  if (!dl) return '';
-  const col = dl.color_code || '#6366f1';
-  const rows = d.talks.map(tk => `
-    <div class="nar-talk">
-      <input class="nt-speaker" value="${x(tk.speaker || '')}" placeholder="${t('speaker')}"
-        onblur="saveNarratorTalk(${tk.id},this,'speaker')">
-      <input class="nt-text" value="${x(tk.talk_sentence || '')}" placeholder="…"
-        onblur="saveNarratorTalk(${tk.id},this,'text')">
-      <button class="btn btn-g btn-i${tk.linker_key ? ' act' : ''}" onclick="openNarratorTalkLinkModal(${tk.id})" title="${t('moduleLink')}">${I.relation}</button>
-      <button class="btn btn-g btn-i" onclick="deleteNarratorTalk(${tk.id})" title="${t('delete')}">${I.delete}</button>
-    </div>`).join('');
-  return `<div class="nar-conv">
-    <div class="ph"><h4 style="border-left:3px solid ${x(col)};padding-left:8px">${x(dl.name)} · ${t('conversation')}</h4>
-      <button class="btn btn-g btn-i" onclick="openNarratorLinkFilterModal(${d.moduleId})" title="${t('narratorLinkFilter')}">${I.edit}</button>
-    </div>
-    <div class="nar-talks">${rows || `<div class="empty" style="padding:14px"><p>${t('nestEmpty')}</p></div>`}</div>
-    <div class="nar-talk nar-talk-new">
-      <input id="nt-new-speaker" class="nt-speaker" placeholder="${t('speaker')}">
-      <input id="nt-new-text" class="nt-text" placeholder="…" onkeydown="if(event.key==='Enter')addNarratorTalk()">
-      <button class="btn btn-p btn-i" onclick="addNarratorTalk()" title="${t('addTalk')}">${I.plus}</button>
-    </div>
-  </div>`;
-}
-
-async function saveNarratorTalk(id, el, field) {
-  const d = S.narratorData;
-  const tk = d.talks.find(t2 => t2.id === id);
-  if (!tk) return;
-  const speaker = field === 'speaker' ? el.value.trim() : (tk.speaker || '');
-  const text = field === 'text' ? el.value : (tk.talk_sentence || '');
-  if (speaker === (tk.speaker || '') && text === (tk.talk_sentence || '')) return;
-  await api.narrator.updateTalk(id, speaker, text, tk.linker_key || null);
-  tk.speaker = speaker; tk.talk_sentence = text;
-}
-
-async function addNarratorTalk() {
-  const d = S.narratorData;
-  if (!d?.selectedId) return;
-  const speaker = q('#nt-new-speaker')?.value.trim() || '';
-  const text = q('#nt-new-text')?.value.trim() || '';
-  if (!text) return;
-  await api.narrator.createTalk(d.selectedId, speaker, text);
-  await openModuleNode(d.moduleId);
-}
-
-// Plan part5 Narrator #2: per-talk-line link to any vault entity, filtered
-// by an allowlist of quickIndex types saved on the module itself
-// (module_ui.narratorLinkFilter) — same JSON-blob convention Chronicler's
-// calendarConfig already uses.
-async function narratorLinkFilterTypes(moduleId) {
-  const ui = await api.module.getUi(moduleId);
-  try {
-    const arr = ui.narratorLinkFilter ? JSON.parse(ui.narratorLinkFilter) : null;
-    return Array.isArray(arr) && arr.length ? arr : null;
-  } catch (_) { return null; }
-}
-
-async function openNarratorTalkLinkModal(talkId) {
-  const d = S.narratorData;
-  const tk = d.talks.find(t2 => t2.id === talkId);
-  if (!tk || !S.nexus) return;
-  const [ix, allow] = await Promise.all([api.wiki.quickIndex(S.nexus.id), narratorLinkFilterTypes(d.moduleId)]);
-  const filtered = allow ? ix.filter(e => allow.includes(e.type)) : ix;
-  const opts = `<option value="">--</option>` + filtered.map(e =>
-    `<option value="${x(e.key)}" ${tk.linker_key === e.key ? 'selected' : ''}>${x(e.name)} (${x(e.type)})</option>`).join('');
-  openModal(t('moduleLink'), `
-    <div class="fg"><label>${t('moduleLink')}</label><select id="nt-link-key">${opts}</select></div>
-    <div class="mfoot">
-      <button class="btn btn-s" onclick="closeModal()">${t('cancel')}</button>
-      <button class="btn btn-p" onclick="submitNarratorTalkLink(${talkId})">${t('save')}</button>
-    </div>`);
-}
-
-async function submitNarratorTalkLink(talkId) {
-  const d = S.narratorData;
-  const tk = d.talks.find(t2 => t2.id === talkId);
-  if (!tk) return;
-  const key = q('#nt-link-key')?.value || null;
-  await api.narrator.updateTalk(talkId, tk.speaker || '', tk.talk_sentence || '', key);
-  tk.linker_key = key;
-  closeModal();
-  await openModuleNode(d.moduleId);
-  toast(t('saved'), 'ok');
-}
-
-async function openNarratorLinkFilterModal(moduleId) {
-  const allow = (await narratorLinkFilterTypes(moduleId)) || [];
-  const rows = NARRATOR_LINK_TYPES.map(ty => `
-    <div class="togglerow" onclick="toggleNarratorLinkFilterType(this)" data-type="${ty}">
-      <span class="tg${allow.includes(ty) ? ' on' : ''}"></span><span data-no-i18n>${ty}</span>
-    </div>`).join('');
-  openModal(t('narratorLinkFilter'), `
-    <div id="nar-link-filter-rows">${rows}</div>
-    <div class="mfoot">
-      <button class="btn btn-s" onclick="closeModal()">${t('cancel')}</button>
-      <button class="btn btn-p" onclick="saveNarratorLinkFilter(${moduleId})">${t('save')}</button>
-    </div>`);
-}
-
-function toggleNarratorLinkFilterType(el) {
-  el.querySelector('.tg').classList.toggle('on');
-}
-
-async function saveNarratorLinkFilter(moduleId) {
-  const allow = [...document.querySelectorAll('#nar-link-filter-rows .togglerow')]
-    .filter(row => row.querySelector('.tg').classList.contains('on'))
-    .map(row => row.dataset.type);
-  await api.module.setUi(moduleId, 'narratorLinkFilter', JSON.stringify(allow));
-  closeModal();
-  toast(t('saved'), 'ok');
-}
-
-async function deleteNarratorTalk(id) {
-  if (!await uiConfirm(t('moduleDeleteConfirm'))) return;
-  await api.narrator.deleteTalk(id);
-  await openModuleNode(S.narratorData.moduleId);
-}
 
 // ── Dialogue CRUD ───────────────────────────────────────────────────────
 async function openNarratorDialogueModal(moduleId, id = null) {
@@ -542,6 +435,10 @@ async function mountNarratorReader() {
   for (const r of (roots.length ? roots : d.dialogues)) visit(r.id);
   for (const dl of d.dialogues) visit(dl.id);
   const talksById = new Map(await Promise.all(order.map(async id => [id, await api.narrator.getTalks(id)])));
+  // Process 8 part 2: a choice row has no sentence of its own to read, so
+  // without its options the reader would show a blank line where the branch
+  // is — the one place a dialogue's shape is meant to be legible end to end.
+  const optsById = new Map(await Promise.all(order.map(async id => [id, await api.narrator.getChoiceOptions(id)])));
   let html = '';
   for (const id of order) {
     const dl = d.dialogues.find(dd => dd.id === id);
@@ -549,9 +446,26 @@ async function mountNarratorReader() {
     const col = dl.color_code || '#6366f1';
     const outs = d.edges.filter(e => e.from_ref === id);
     const talks = talksById.get(id) || [];
+    const opts = optsById.get(id) || [];
+    const readLine = (tk) => {
+      if (tk.row_type !== 'choice') {
+        return `<div class="nar-read-line">${tk.speaker ? `<b>${x(tk.speaker)}:</b> ` : ''}${x(tk.talk_sentence || '')}</div>`;
+      }
+      const mine = opts.filter(o => o.talk_ref === tk.id);
+      const body = mine.map(o => {
+        const eff = o.effect_kind === 'jump'
+          ? `→ ${x(d.dialogues.find(dd => dd.id === o.jump_ref)?.name || '')}`
+          : (o.effect_kind === 'none' ? '' : x(o.effect_text || ''));
+        return `<div class="nar-read-choice-opt">▸ ${x(o.option_text || '')}${eff ? ` <span class="ghost">${eff}</span>` : ''}</div>`;
+      }).join('');
+      return `<div class="nar-read-choice">
+        ${tk.talk_sentence ? `<div class="nar-read-line">${x(tk.talk_sentence)}</div>` : ''}
+        ${body || `<div class="nar-read-line ghost">—</div>`}
+      </div>`;
+    };
     html += `<div class="nar-read-sec" style="border-left:3px solid ${x(col)}">
       <h4 style="color:${x(col)}">${x(dl.name)}</h4>
-      ${talks.map(tk => `<div class="nar-read-line">${tk.speaker ? `<b>${x(tk.speaker)}:</b> ` : ''}${x(tk.talk_sentence || '')}</div>`).join('') || `<div class="nar-read-line ghost">—</div>`}
+      ${talks.map(readLine).join('') || `<div class="nar-read-line ghost">—</div>`}
       ${outs.length > 1 ? `<div class="nar-read-branch" data-no-i18n>⑂ ${outs.map(e => `${x(e.label || '')} → ${x(d.dialogues.find(dd => dd.id === e.to_ref)?.name || '')}`).join(' · ')}</div>` : ''}
     </div>`;
   }

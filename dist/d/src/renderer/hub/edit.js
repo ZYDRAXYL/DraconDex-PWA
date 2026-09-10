@@ -107,6 +107,7 @@ async function moduleFormModal(existing) {
   openModal(t('moduleEdit'), `
     <div class="mm-section-label">${t('moduleIdentitySection')}</div>
     <div class="fg"><label>${t('name')} *</label><input id="mm-name" value="${x(existing.name || '')}"></div>
+    <div class="fg"><label>${t('moduleHandle')}</label><input id="mm-handle" value="${x(existing.handle || '')}" placeholder="${t('moduleHandleHint')}"></div>
     ${buildKindPicker(existing.kind)}
     <div class="fg"><label>${t('iconCollection')}</label>${await iconPicker(existing.icon || null, existing.color || null, existing.name || '', kindLabel(existing.kind))}</div>
     ${isClassifier ? '<div class="ctx-sep"></div>' : ''}
@@ -125,7 +126,17 @@ async function submitModuleForm(existingId) {
   const kind = q('#mm-kind').value;
   const colorId = q('#sel-color').value || null;
   const icon = getIconPickerValue() || null;
-  await api.module.update(existingId, { name, color: colorId, icon_color: colorId, icon });
+  const handle = q('#mm-handle')?.value.trim() ?? '';
+  // A duplicate or malformed handle throws out of the db layer (module.js's
+  // assertHandleFree/normalizeHandle). Catching it here is what keeps the
+  // modal open with the user's typing intact — without this the throw would
+  // escape and the form would just sit there having silently saved nothing.
+  try {
+    await api.module.update(existingId, { name, color: colorId, icon_color: colorId, icon, handle });
+  } catch (e) {
+    toast(t(/invalid/.test(e.message) ? 'handleInvalid' : 'handleTaken'), 'err');
+    return;
+  }
   if (kind === 'classifier') await api.classifier.setCatType(existingId, q('#mm-cattype')?.value || 'object');
   closeModal();
   await reloadModuleTree();

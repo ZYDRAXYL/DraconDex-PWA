@@ -222,6 +222,7 @@ body[data-theme="clearMeteor"] .brand-img{content:url('../../src/assets/brand/Dr
 .module-head .kicon .kicon-img-icon{width:18px;height:18px;border-radius:50%;object-fit:cover}
 .li .kind{margin-left:auto;font-size:calc(9px * var(--fsc,1));color:var(--t3);border:1px solid var(--border);
 	border-radius:3px;padding:0 4px;letter-spacing:.03em;flex-shrink:0}
+.li .kind-handle{color:var(--accentH);border-color:var(--accent);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .li .kind-icon{display:inline-flex;align-items:center;justify-content:center;padding:2px}
 .li .kind-icon .icon{width:10px;height:10px;stroke-width:2.2}
 .li .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

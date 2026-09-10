@@ -38,7 +38,8 @@ async function openEntityByKey(key) {
     // Settings → Database use, rather than routing into a deleted renderer.
     toast(t('legacyEntityUnconverted'), 'error');
     if (typeof openLegacyMigratePreviewModal === 'function') openLegacyMigratePreviewModal();
-  } else if (p.kind === 'module' || p.kind === 'bchp' || p.kind === 'chss' || p.kind === 'cobj') {
+  } else if (p.kind === 'module' || p.kind === 'bchp' || p.kind === 'chss' || p.kind === 'cobj'
+             || p.kind === 'tlev' || p.kind === 'sdlg') {
     S.activeModule = null; S.view = 'nexus';
     document.querySelectorAll('.nav-btn[data-panel]').forEach(b => b.classList.remove('active'));
     updateTopNavButton();
@@ -47,6 +48,8 @@ async function openEntityByKey(key) {
     if (p.kind === 'bchp') S.pendingAuthorChapter = p.chapterId;
     if (p.kind === 'chss') S.pendingChatSession = p.sessionId;
     if (p.kind === 'cobj') S.classifierSelectedObject = p.objectId;
+    if (p.kind === 'tlev') S.pendingChroniclerEvent = p.eventId;
+    if (p.kind === 'sdlg') S.pendingNarratorDialogue = p.dialogueId;
     await openModuleNode(p.moduleId);
   }
   trackRecentEntity(key);

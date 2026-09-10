@@ -11,8 +11,27 @@ const DESIGNER_VIEWS = ['canvas', 'outline', 'matrix'];
 const DESIGNER_VIEW_LABEL = { canvas: 'Canvas', outline: 'Outline', matrix: 'Matrix' };
 const DG_W = 2000, DG_H = 1400;
 const DG_COLORS = ['#2dd4bf', '#38bdf8', '#facc15', '#f87171', '#a78bfa', '#f8fafc'];
-const DG_SHAPES = ['box', 'circle', 'diamond', 'text'];
-const DG_SHAPE_GLYPH = { box: '▭', circle: '○', diamond: '◇', text: 'T' };
+// Process 8 part 2: the shape vocabulary. This list IS the allowlist now —
+// design_node.shape used to carry a SQL CHECK naming the first four, which
+// made every new shape a table rebuild for every existing vault (see
+// migrateDesignNodeShapes in db/schema/migrations.js).
+const DG_SHAPES = ['box', 'rounded', 'circle', 'ellipse', 'pill', 'diamond',
+  'hexagon', 'parallelogram', 'triangle', 'star', 'cross', 'note', 'text'];
+// The four the toolbar keeps as buttons; the rest live behind its "more"
+// button, so the palette doesn't grow into a wall of glyphs.
+const DG_TOOLBAR_SHAPES = ['box', 'circle', 'diamond', 'text'];
+const DG_SHAPE_GLYPH = {
+  box: '▭', rounded: '▢', circle: '○', ellipse: '⬭', pill: '⬬', diamond: '◇',
+  hexagon: '⬡', parallelogram: '▰', triangle: '△', star: '☆', cross: '✚',
+  note: '▤', text: 'T',
+};
+// Shapes a border cannot draw: rendered as a clipped colour plate with an
+// inset surface-coloured copy punched out of it, the generalisation of what
+// .dg-diamond already does with a rotated inner box.
+const DG_POLY_SHAPES = ['hexagon', 'parallelogram', 'triangle', 'star', 'cross', 'note'];
+// Round enough that edge trimming should use the ellipse formula rather than
+// the bounding-box ray.
+const dgIsRound = (shape) => shape === 'circle' || shape === 'ellipse';
 
 const dgState = { zoom: {}, edgeFrom: null }; // render-only
 const DESIGNER_LINK_TYPES = ['note', 'object', 'character', 'chapter', 'project', 'module', 'chat'];
@@ -59,7 +78,8 @@ function buildDesignerMainHtml(m) {
         </div>
       </div>
       <div class="sk-tools" data-no-i18n>
-        ${DG_SHAPES.map(s => `<button class="btn btn-g btn-i" onclick="addDesignNode('${s}')" title="${s}">${DG_SHAPE_GLYPH[s]}</button>`).join('')}
+        ${DG_TOOLBAR_SHAPES.map(s => `<button class="btn btn-g btn-i" onclick="addDesignNode('${s}')" title="${s}">${DG_SHAPE_GLYPH[s]}</button>`).join('')}
+        <button class="btn btn-g btn-i" onclick="event.stopPropagation();openDesignShapePopup(this)" title="${t('moreShapes')}">${I.options}</button>
         <span class="zsep"></span>
         <button class="btn btn-g btn-i${dgState.edgeFrom !== null ? ' act' : ''}" onclick="startDesignEdge()" title="${t('edgeTool')}">↦</button>
         <button class="btn btn-g btn-i" onclick="openDesignPinModal()" title="${t('pinModuleLink')}">🔗</button>
@@ -118,8 +138,8 @@ function mountDesignerBoard() {
       const dx = b.x - a.x, dy = b.y - a.y;
       const elA = stage.querySelector(`[data-node="${a.id}"]`);
       const elB = stage.querySelector(`[data-node="${b.id}"]`);
-      const pA = dgBoundaryPoint(a.x, a.y, dx, dy, elA, a.shape === 'circle');
-      const pB = dgBoundaryPoint(b.x, b.y, -dx, -dy, elB, b.shape === 'circle');
+      const pA = dgBoundaryPoint(a.x, a.y, dx, dy, elA, dgIsRound(a.shape));
+      const pB = dgBoundaryPoint(b.x, b.y, -dx, -dy, elB, dgIsRound(b.shape));
       const ax = pA.x, ay = pA.y, bx2 = pB.x, by2 = pB.y;
       html += `<line x1="${ax}" y1="${ay}" x2="${bx2}" y2="${by2}" stroke="var(--t3)"
         stroke-width="1.6" marker-end="url(#dg-arrow)" opacity="0.9"></line>`;
@@ -140,13 +160,17 @@ function mountDesignerBoard() {
   stage.querySelectorAll('.dg-node').forEach(el => el.remove());
   for (const n of d.nodes) {
     const el = document.createElement('div');
-    el.className = `dg-node dg-${n.shape}${n.linker_key ? ' dg-pin' : ''}${dgState.edgeFrom === n.id ? ' edge-from' : ''}`;
+    el.className = `dg-node dg-${n.shape}${DG_POLY_SHAPES.includes(n.shape) ? ' dg-poly' : ''}${n.linker_key ? ' dg-pin' : ''}${dgState.edgeFrom === n.id ? ' edge-from' : ''}`;
     el.dataset.node = n.id;
     el.style.left = `${n.x}px`;
     el.style.top = `${n.y}px`;
     const col = n.color || DG_COLORS[1];
     if (n.shape === 'diamond') {
       el.innerHTML = `<span class="dg-diamond-box" style="border-color:${x(col)}"></span><span class="dg-label" style="color:${x(col)}" data-no-i18n>${x(dgNodeName(n))}</span>`;
+    } else if (DG_POLY_SHAPES.includes(n.shape)) {
+      // --dg-col drives the plate; the ::after inset repaints the middle in
+      // var(--surface), which is what leaves a 2px outline in the node colour.
+      el.innerHTML = `<span class="dg-poly-box" style="--dg-col:${x(col)}"></span><span class="dg-label" style="color:${x(col)}" data-no-i18n>${x(dgNodeName(n))}</span>`;
     } else if (n.linker_key) {
       el.style.borderColor = col;
       el.innerHTML = `<span data-no-i18n>[[${x(dgNodeName(n))}]]</span><small data-no-i18n>${x(n.entity ? n.entity.type : '?')}</small>`;
@@ -300,11 +324,32 @@ function dgArmEdgePick() {
 // markup used — a container-scoped selector works correctly whether this
 // renders inside the modal or the item page (only one of either is ever
 // mounted at a time either way).
+// The full shape palette, behind the toolbar's "more" button — the same
+// popup plumbing chronicler-graph.js's options menu uses, hosting the
+// icon-picker's grid markup (iconpicker.js) rather than a bespoke one.
+function openDesignShapePopup(anchor) {
+  closeAllPopups();
+  if (!anchor) return;
+  const pop = document.createElement('div');
+  pop.className = 'kind-popup dg-shape-popup';
+  pop.innerHTML = `<div class="insp-label">${t('moreShapes')}</div>
+    <div class="ipk-grid">${DG_SHAPES.map(sh =>
+      `<div class="ipk-cell" title="${x(sh)}" onclick="pickDesignShape('${sh}')" data-no-i18n>${DG_SHAPE_GLYPH[sh]}</div>`).join('')}</div>`;
+  document.body.appendChild(pop);
+  pop.addEventListener('click', (ev) => ev.stopPropagation());
+  positionPopupNear(pop, anchor.getBoundingClientRect());
+}
+
+function pickDesignShape(shape) {
+  closeAllPopups();
+  addDesignNode(shape);
+}
+
 function buildDesignNodeFieldsHtml(n, opts = {}) {
   const prefix = opts.prefix || 'dn';
   return `
     <div class="fg"><label>${t('content')}</label><input id="${prefix}-text" value="${x(n.node_text || '')}" ${n.linker_key ? 'disabled' : ''}></div>
-    <div class="fg"><label data-no-i18n>Shape</label>
+    <div class="fg"><label>${t('shape')}</label>
       <select id="${prefix}-shape" data-no-i18n ${n.linker_key ? 'disabled' : ''}>${DG_SHAPES.map(s =>
         `<option value="${s}" ${n.shape === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
     <div class="fg"><label data-no-i18n>Color</label>

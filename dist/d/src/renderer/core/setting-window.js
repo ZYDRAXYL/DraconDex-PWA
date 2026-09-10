@@ -21,7 +21,7 @@ const SETTING_GROUPS = {
   workspace: ['theme', 'textsize', 'tooltoggle', 'style', 'startup'],
   user: ['account', 'profile'],
   appdata: ['tokensync', 'database', 'backup', 'cloudstorage', 'versions'],
-  plugin: ['plugin', 'pluginsettings'],
+  plugin: ['plugin', 'pluginsettings', 'packages'],
 };
 function settingGroupPages(group){
   const pages = SETTING_GROUPS[group] || SETTING_GROUPS.workspace;
@@ -38,6 +38,7 @@ const SETTING_PAGE_LABEL_KEY = {
   tokensync: 'settingPageTokenSync', database: 'settingPageDatabase', backup: 'prefs_backup',
   cloudstorage: 'settingPageCloudStorage', versions: 'settingPageVersions',
   plugin: 'prefs_plugin', pluginsettings: 'settingPagePluginSettings',
+  packages: 'settingPagePackages',
 };
 // Populated by each page's owning file at parse time — key is 'group.page'.
 // A page renderer may be synchronous (returns final HTML) or kick off an
@@ -48,11 +49,18 @@ function registerSettingPage(group, page, fn){
   SETTING_PAGE_RENDERERS[`${group}.${page}`] = fn;
 }
 
+// Process 7 part 2: which group.page was rendered last, so renderSettingWindow()
+// can tell a same-page value change (restore scroll) apart from a tab switch
+// (start at top, same as opening the window fresh) — reset on open so the
+// window always starts at the top the moment it's shown.
+let _settingWindowLastKey = null;
 function openSettingWindow(group, page){
   S.settingGroup = group || S.settingGroup || 'workspace';
   const pages = settingGroupPages(S.settingGroup);
   S.settingPage = page || (pages.includes(S.settingPage) ? S.settingPage : pages[0]);
+  _settingWindowLastKey = null;
   openFloatingPanel('setting-window', `${I.settings} ${t('settingWindowTitle')}`, settingWindowBodyHtml(), {width:1040, height:680});
+  _settingWindowLastKey = `${S.settingGroup}.${S.settingPage}`;
 }
 function selectSettingPage(group, page){
   S.settingGroup = group;
@@ -61,7 +69,17 @@ function selectSettingPage(group, page){
 }
 function renderSettingWindow(){
   const body = q('#setting-window .fp-body');
-  if(body) body.innerHTML = settingWindowBodyHtml();
+  if(!body) return;
+  const key = `${S.settingGroup}.${S.settingPage}`;
+  const samePage = key === _settingWindowLastKey;
+  const content = q('#setting-window .setting-content');
+  const bodyScroll = samePage ? body.scrollTop : 0;
+  const contentScroll = samePage && content ? content.scrollTop : 0;
+  body.innerHTML = settingWindowBodyHtml();
+  _settingWindowLastKey = key;
+  body.scrollTop = bodyScroll;
+  const newContent = q('#setting-window .setting-content');
+  if(newContent) newContent.scrollTop = contentScroll;
   // procress1 part3: the floating-panel title itself is baked in once by
   // openFloatingPanel (data-no-i18n, exempt from the auto-translate DOM
   // walk) — refresh it here too so a language change updates it immediately
@@ -212,14 +230,11 @@ function settingTextSizePageHtml(){
       ${nameModeCompareListHtml()}
     </div>
     <div class="settings-group">
-      <div class="settings-label">${t('uiSize')}</div>
-      ${uiSizeSlidersHtml()}
+      <div class="settings-label">${t('fontSize')}</div>
+      ${fontSizeSliderHtml()}
     </div>
     <button class="btn ${S.settingAdvanced ? 'btn-p' : 'btn-s'}" onclick="toggleSettingAdvanced()">${t('advanced')}</button>
-    <div class="settings-label">${t('versionLimit')}</div>
-    <input class="settings-number" type="number" min="1" max="500" value="${S.versionLimitCache ?? 50}" onchange="setVersionLimit(this.value)">
     ${S.settingAdvanced ? `<div class="prefs-advanced">
-      ${sliderNumberRowHtml(`${t('uiSize')} (%)`, { min: UI_SIZE_MIN, max: UI_SIZE_MAX, step: UI_SIZE_STEP, value: S.settings.size, commit: "setUiSetting('size', this.value)" })}
       ${sliderNumberRowHtml(`${t('fontSize')} (%)`, { min: 80, max: 130, step: 5, value: S.settings.fontScale || 100, commit: "setUiSetting('fontScale', this.value)" })}
       <div class="settings-label">${t('settingAreaScale')}</div>
       ${areaRows}
