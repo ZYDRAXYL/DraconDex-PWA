@@ -2,7 +2,7 @@
   <img src="dist/src/assets/brand/DraconDex_Color.png" alt="DraconDex logo" width="150">
 </p>
 
-<h1 align="center">PWA-DraconDex</h1>
+<h1 align="center">DraconDex-PWA</h1>
 
 <p align="center">
   DraconDex as an installable web app — the desktop build for desktop browsers,
@@ -14,13 +14,13 @@
   มือถือได้เวอร์ชัน Flutter ข้อมูลทั้งหมดอยู่ในเครื่องผู้ใช้เอง</em>
 </p>
 
-<p align="center"><b><a href="https://ldktc.github.io/PWA-DraconDex/">ldktc.github.io/PWA-DraconDex</a></b></p>
+<p align="center"><b><a href="https://zydraxyl.github.io/DraconDex-PWA/">zydraxyl.github.io/DraconDex-PWA</a></b></p>
 
 ---
 
 ## What this is
 
-[DraconDex](https://github.com/LDKTC/App-DraconDex) is a world-building
+[DraconDex](https://github.com/ZYDRAXYL/DraconDex-EXE) is a world-building
 manager for novelists — characters, places, timelines, relationships and
 Obsidian-style markdown notes with `[[wikilinks]]`, all in a local SQLite
 database. It ships as an Electron app for Windows/macOS and as a Flutter app
@@ -34,7 +34,13 @@ device to the build made for it:
 | Lane | Path | What it is | For |
 |---|---|---|---|
 | Desktop | `/d/` | the **Electron** front-end, running in the page | desktop and laptop browsers |
-| Mobile | `/m/` | the **Flutter** front-end's web target | phones and tablets |
+| Tablet | `/t/` | the same Flutter build, tablet layout profile | tablets and iPads |
+| Mobile | `/m/` | the **Flutter** front-end's web target | phones |
+
+> `/t/` is not a third build. It is one ~2 KB HTML file whose `<base href>`
+> points at `/m/`, so the whole 50 MB Flutter bundle is served from one copy —
+> verified in a real browser: loading `/t/` fetches **zero** resources from
+> `/t/` itself.
 
 Both are the real app, not a demo or a cut-down viewer: the desktop lane runs
 DraconDex's own renderer, its own `preload.js` contract and its whole
@@ -109,17 +115,17 @@ npm install
 npm run build
 
 # Or build from a checkout you already have beside this one:
-npm run build -- --local ../App-DraconDex
+npm run build -- --local ../DraconDex-EXE
 
 # Drive the built site in a real browser and check it works.
 npm run verify
 
-# Serve dist/ the way GitHub Pages does, at /PWA-DraconDex/.
+# Serve dist/ the way GitHub Pages does, at /DraconDex-PWA/.
 npm run serve
 ```
 
 Requirements: **Node 22+** for the desktop lane, and the **Flutter SDK**
-(3.44.4, matching App-DraconDex's own web workflow) for the mobile lane. Without
+(3.44.4, matching DraconDex-EXE's own web workflow) for the mobile lane. Without
 Flutter the mobile lane is skipped with a warning and everything else still
 builds.
 
@@ -146,7 +152,7 @@ shim/            the browser stand-ins for what Electron's main process gave the
   buffer.js, path.js, os.js, crypto.js, http.js, async_hooks.js, globals.js
 tools/           fetch-app, build-desktop, build-mobile, build-shell, build, verify, serve
 docs/            BROWSER-BUILD.md — how the desktop lane actually works
-app-source.json  which App-DraconDex commit dist/ was built from
+app-source.json  which DraconDex-EXE commit dist/ was built from
 ```
 
 **`dist/` is committed.** The deployed site is the artefact this repository
@@ -155,11 +161,11 @@ repository while still letting Pages deploy without reaching into a private one.
 `.app-src/` (the fetched DraconDex source) is never committed.
 
 To catch the site up after DraconDex changes, either rebuild locally and commit
-`dist/`, or run the **Rebuild from App-DraconDex** workflow, which does the same
+`dist/`, or run the **Rebuild from DraconDex-EXE** workflow, which does the same
 thing in CI and opens a PR (it needs an `APP_SOURCE_TOKEN` secret that can read
 the private repo).
 
 ## Credit and licence
 
-The application is [DraconDex](https://github.com/LDKTC/App-DraconDex) by
-LDKTC, MIT-licensed; this repository is the build and hosting layer around it.
+The application is [DraconDex](https://github.com/ZYDRAXYL/DraconDex-EXE) by
+ZYDRAXYL, MIT-licensed; this repository is the build and hosting layer around it.

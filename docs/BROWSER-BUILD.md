@@ -2,7 +2,7 @@
 
 > เอกสารนี้อธิบาย **หลักการ** ของเลน `/d/` เป็นหลัก (เลน `/m/` คือ
 > `flutter build web` ของโค้ด Flutter ชุดเดิม — อ่าน `docs/PWA.md` ใน
-> App-DraconDex ได้โดยตรง ไม่มีอะไรเพิ่มจากฝั่งนี้นอกจาก
+> DraconDex-EXE ได้โดยตรง ไม่มีอะไรเพิ่มจากฝั่งนี้นอกจาก
 > `--no-web-resources-cdn` ที่อธิบายไว้ท้ายเอกสาร)
 
 ## 1. โจทย์
@@ -34,7 +34,7 @@ renderer (ไฟล์เดิม)  →  window.api (preload.js ตัวจร
 ```
 
 แนวคิดนี้ไม่ใช่ของใหม่ในโปรเจกต์ — `.claude/skills/run-dracondex/web-driver.mjs`
-ของ App-DraconDex ก็รัน renderer จริงใน Chromium โดย stub เฉพาะเปลือก Electron
+ของ DraconDex-EXE ก็รัน renderer จริงใน Chromium โดย stub เฉพาะเปลือก Electron
 ต่างกันตรงที่ตัวนั้นยังมี Node เป็น main process อยู่หลัง bridge ส่วนอันนี้
 ย้ายทั้งหมดเข้ามาในหน้าเว็บ
 

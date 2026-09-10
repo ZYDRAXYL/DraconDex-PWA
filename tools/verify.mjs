@@ -160,7 +160,7 @@ try {
       check('the Flutter lane loads without page errors', phoneErrors.length === 0, phoneErrors.slice(0, 2).join(' | '));
 
       // The same build has to answer a tablet-shaped window with a different
-      // shell — vertical rail, hub panel, content pane (App-DraconDex
+      // shell — vertical rail, hub panel, content pane (DraconDex-EXE
       // docs/PWA.md §7) — instead of the phone's bottom bar stretched wide.
       // A tablet is most of what visits the mobile lane on a big screen, so
       // it is worth a pass of its own here.
@@ -177,6 +177,37 @@ try {
       await phone.screenshot({ path: path.join(shots, '10-mobile-tablet.png') });
       check('the Flutter lane survives a tablet viewport', phoneErrors.length === 0, phoneErrors.slice(0, 2).join(' | '));
       await phone.close();
+    }
+
+    // ── the tablet lane ────────────────────────────────────────────────────
+    // /t/ is one HTML file that loads /m/'s assets through Flutter's <base
+    // href>. That indirection is exactly the kind of thing that looks right in
+    // the generator and 404s in a browser, so it gets a real load here rather
+    // than a file-exists check.
+    console.log('\ntablet lane (/t/)');
+    if (!fs.existsSync(path.join(root, 'dist/t/index.html'))) {
+      check('the tablet lane is built', false, 'dist/t is missing (build ran without a Flutter SDK)');
+    } else {
+      const tablet = await browser.newPage();
+      await tablet.setViewportSize({ width: 1194, height: 834 });
+      const tabletErrors = [];
+      tablet.on('pageerror', (e) => tabletErrors.push(e.message));
+      await tablet.goto(`${base}/t/`, { waitUntil: 'load' });
+      await tablet.waitForSelector('flt-glass-pane, flutter-view, canvas', { timeout: 60000 });
+      await tablet.waitForTimeout(4000);
+      await tablet.screenshot({ path: path.join(shots, '11-tablet.png') });
+      check('the tablet lane starts the Flutter engine', true);
+      check('the tablet lane loads without page errors', tabletErrors.length === 0, tabletErrors.slice(0, 2).join(' | '));
+      // The whole point of the lane: it must be serving /m/'s assets, not a
+      // second copy of them. If the base href ever stopped resolving there,
+      // this is what would catch it.
+      const sharesAssets = await tablet.evaluate(() =>
+        performance.getEntriesByType('resource').some((r) => /\/m\/main\.dart\.js/.test(r.name)));
+      check('the tablet lane loads /m/ assets rather than its own copy', sharesAssets,
+        'main.dart.js was not fetched from /m/ — the <base href> is wrong');
+      const marked = await tablet.evaluate(() => window.__ddxLane);
+      check('the tablet lane marks itself for the app', marked === 'tablet', `window.__ddxLane = ${marked}`);
+      await tablet.close();
     }
   }
 
