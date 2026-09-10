@@ -38,7 +38,8 @@
   <div id="status"></div>
   <div class="lanes">
     <a class="lane" href="d/" data-lane="d"><b>เดสก์ท็อป</b><span>หน้าจอใหญ่ คีย์บอร์ด เมาส์ — เวอร์ชันเดียวกับแอป Windows / macOS</span></a>
-    <a class="lane" href="m/" data-lane="m"><b>มือถือ / แท็บเล็ต</b><span>ทัชสกรีน — เวอร์ชันเดียวกับแอป iOS / Android</span></a>
+    <a class="lane" href="t/" data-lane="t"><b>แท็บเล็ต / iPad</b><span>จอกลาง ทัชสกรีน — เวอร์ชันเดียวกับแอปมือถือ แต่จัดหน้าแบบแท็บเล็ต</span></a>
+    <a class="lane" href="m/" data-lane="m"><b>มือถือ</b><span>ทัชสกรีน — เวอร์ชันเดียวกับแอป iOS / Android</span></a>
   </div>
   <div class="note">DraconDex 4.13.2 · เปิดหน้านี้ด้วย <code>?lane=choose</code> เพื่อเลือกใหม่ได้เสมอ</div>
 </div>
@@ -53,11 +54,27 @@
   // reports itself as a desktop Safari but is a tablet by every other measure.
   function detect(){
     var ua = navigator.userAgent;
+    // iPadOS reports itself as desktop Safari and is a tablet by every other
+    // measure, so it needs the touch-points tiebreaker. It used to be detected
+    // only to push it into 'm'; now it gets a lane of its own.
     var iPadOS = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
-    var mobileUA = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/.test(ua) || iPadOS;
+    var tabletUA = /iPad|Tablet|Nexus 7|Nexus 10|SM-T|Kindle|Silk/.test(ua) || iPadOS
+      || (/Android/.test(ua) && !/Mobile/.test(ua));   // Android drops "Mobile" on tablets
+    var phoneUA = /Android.*Mobile|iPhone|iPod|Windows Phone/.test(ua);
     var coarse = matchMedia('(pointer: coarse)').matches;
-    var narrow = Math.min(screen.width, screen.height) < 900;
-    return (mobileUA || (coarse && narrow)) ? 'm' : 'd';
+    // any-pointer, not pointer: a touchscreen laptop has a coarse PRIMARY
+    // pointer while a mouse or trackpad is still attached, and it wants the
+    // desktop lane. Asking "is a fine pointer available at all" separates it
+    // from a tablet, which has none.
+    var hasFine = matchMedia('(any-pointer: fine)').matches;
+    var shortSide = Math.min(screen.width, screen.height);
+
+    if (phoneUA) return 'm';
+    if (tabletUA) return 't';
+    // No useful UA: go by the questions the Flutter build is designed around —
+    // is it touch-first, is there a real pointer, and how much room is there.
+    if (coarse && !hasFine) return shortSide < 600 ? 'm' : 't';
+    return shortSide < 600 ? 'm' : 'd';
   }
 
   function go(lane){
@@ -70,12 +87,13 @@
   });
 
   if (asked === 'choose') return;
-  if (asked === 'd' || asked === 'm') { go(asked); return; }
+  if (asked === 'd' || asked === 't' || asked === 'm') { go(asked); return; }
 
   var saved = null;
   try { saved = localStorage.getItem(KEY); } catch (e) {}
-  var lane = (saved === 'd' || saved === 'm') ? saved : detect();
-  document.getElementById('status').textContent = 'กำลังเปิด' + (lane === 'm' ? 'เวอร์ชันมือถือ' : 'เวอร์ชันเดสก์ท็อป') + '…';
+  var lane = (saved === 'd' || saved === 't' || saved === 'm') ? saved : detect();
+  var laneName = { d: 'เวอร์ชันเดสก์ท็อป', t: 'เวอร์ชันแท็บเล็ต', m: 'เวอร์ชันมือถือ' }[lane];
+  document.getElementById('status').textContent = 'กำลังเปิด' + laneName + '…';
   // A tick of daylight, so this page is visible (and its links usable) if a
   // lane ever fails to load.
   setTimeout(function(){ go(lane); }, 60);

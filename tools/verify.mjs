@@ -60,7 +60,8 @@ try {
   console.log('\nrouter');
   await page.goto(`${base}/?lane=choose`, { waitUntil: 'load' });
   await shot('01-router');
-  check('router offers both lanes', await page.locator('a.lane').count() === 2);
+  const lanes = await page.locator('a.lane').evaluateAll((els) => els.map((e) => e.dataset.lane));
+  check('router offers all three lanes', lanes.join(',') === 'd,t,m', `offered: ${lanes.join(', ') || '(none)'}`);
   await page.goto(`${base}/`, { waitUntil: 'load' });
   await page.waitForTimeout(800);
   check('router sends a desktop viewport to /d/', page.url().includes('/d/'), page.url());
@@ -204,7 +205,7 @@ try {
       const sharesAssets = await tablet.evaluate(() =>
         performance.getEntriesByType('resource').some((r) => /\/m\/main\.dart\.js/.test(r.name)));
       check('the tablet lane loads /m/ assets rather than its own copy', sharesAssets,
-        'main.dart.js was not fetched from /m/ — the <base href> is wrong');
+        sharesAssets ? 'main.dart.js served from /m/' : 'main.dart.js was NOT fetched from /m/ — the <base href> is wrong');
       const marked = await tablet.evaluate(() => window.__ddxLane);
       check('the tablet lane marks itself for the app', marked === 'tablet', `window.__ddxLane = ${marked}`);
       await tablet.close();
