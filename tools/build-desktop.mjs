@@ -91,6 +91,12 @@ const result = await esbuild.build({
 //   4. web.css, for the chrome that only makes sense with a real OS window.
 let html = fs.readFileSync(path.join(appSrc, 'electron/index.html'), 'utf8');
 
+// The DDX Transfer service origin, allowed through the CSP below. Keep this
+// in step with DEFAULT_BASE in electron/src/db/transfer.js — a user who points
+// the app at their own deployment will also have to serve this build with a
+// CSP that names it.
+const TRANSFER_ORIGIN = 'https://dracondex-transfer.netlify.app';
+
 const CSP = [
   "default-src 'none'",
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
@@ -98,9 +104,15 @@ const CSP = [
   "img-src 'self' data: blob:",
   "font-src 'self'",
   "manifest-src 'self'",
-  // Same-origin only: the wasm binary and the app's own files. Nothing in this
-  // build talks to a third-party host.
-  "connect-src 'self'",
+  // Same-origin for the wasm binary and the app's own files, plus the one
+  // host this build genuinely talks to: the DDX Transfer service
+  // (DraconDex-TRX). src/db/transfer.js reaches it with global fetch — which
+  // is exactly why that feature works here at all, unlike Token Sync's Google
+  // login, which needs a loopback HTTP server the browser cannot give it.
+  //
+  // Without this line the transfer page fails with a CSP violation and no
+  // network error, which reads as "the service is down" and is not.
+  `connect-src 'self' ${TRANSFER_ORIGIN}`,
   "worker-src 'self'",
   "object-src 'none'",
   "frame-src 'none'",

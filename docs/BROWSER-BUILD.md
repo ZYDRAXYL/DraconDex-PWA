@@ -167,6 +167,26 @@ main.js เป็นคนตัดสินใจแล้วส่งมาเ
 | ไฟล์ที่ import ยังลิงก์กับพาธเดิมบนดิสก์ | เบราว์เซอร์ไม่ให้พาธจริง ไฟล์จึงถูก "คัดลอกเข้ามา" แทน |
 | Cloud Sync | ปิดทั้งโปรเจกต์อยู่แล้วตั้งแต่ต้นทาง ไม่ใช่ข้อจำกัดของเว็บ |
 
+### DDX Transfer ใช้ได้ — และเหตุผลที่ Google login ใช้ไม่ได้คือเหตุผลเดียวกัน
+
+**DDX Transfer** (`electron/src/db/transfer.js`) ทำงานใน lane `/d/` ได้ครบ
+ทั้งส่งและรับ ทั้งที่ Token Sync ใช้ไม่ได้ — ความต่างอยู่ที่สิ่งที่แต่ละอันต้องใช้:
+
+| | ต้องการอะไร | บนเว็บ |
+|---|---|---|
+| Token Sync (Google login) | loopback HTTP server รับ OAuth redirect | `shim/http.js` โยน `ERR_WEB_UNSUPPORTED` — เบราว์เซอร์เปิดเซิร์ฟเวอร์ไม่ได้ |
+| DDX Transfer | `fetch` ระดับโลกอย่างเดียว | ใช้ได้ตามปกติ |
+
+DDX Transfer **ไม่มี OAuth เลย** (ไม่มีบัญชี มีแค่รหัสกับ PIN), ไม่แตะ
+`http.createServer`, ไม่เปิด dialog เลือกไฟล์ (snapshot อยู่ในหน่วยความจำตั้งแต่
+ต้นจนจบ) และไม่แตะ `shim/fs.js` — สามอย่างที่เป็นข้อจำกัดจริงของ lane นี้
+
+**ข้อเดียวที่ต้องทำคือ CSP** — `connect-src 'self'` เดิมบล็อกคำขอไปยังโดเมนของ
+บริการ และบล็อกแบบ*ไม่มี network error* ซึ่งอ่านออกมาเหมือน "เซิร์ฟเวอร์ล่ม"
+`tools/build-desktop.mjs` จึงใส่ `TRANSFER_ORIGIN` เข้าไปใน `connect-src`
+(ต้องตรงกับ `DEFAULT_BASE` ใน `electron/src/db/transfer.js`) ส่วนฝั่งบริการ
+มี allowlist CORS ที่มี origin ของ GitHub Pages อยู่แล้ว
+
 ## 9. Content-Security-Policy
 
 `index.html` ของแอปมี CSP ที่ตั้งใจให้ `connect-src 'none'` (renderer เดสก์ท็อป
