@@ -59,6 +59,8 @@ const nodeShims = {
   'node:os': shim('os.js'),
   'node:crypto': shim('crypto.js'),
   'node:http': shim('http.js'),
+  zlib: shim('zlib.js'),
+  'node:zlib': shim('zlib.js'),
 };
 
 const result = await esbuild.build({
