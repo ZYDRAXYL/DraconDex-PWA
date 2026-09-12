@@ -16,7 +16,7 @@
        and <base> can't be hijacked to re-point relative URLs.
        Tightening script-src further means migrating ~500 inline handlers to
        delegated listeners — a separate job, not a quick win. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; connect-src 'self' https://dracondex-transfer.netlify.app; worker-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
   <title>DraconDex</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#050506">
@@ -320,6 +320,7 @@
   <script src="src/renderer/mod/wanderer.js"></script>
   <script>__splash.set(50)</script>
   <script src="src/renderer/sync.js"></script>
+  <script src="src/renderer/transfer.js"></script>
   <script src="src/renderer/supabase.js"></script>
   <script src="src/renderer/drive.js"></script>
   <script src="src/renderer/cloud.js"></script>
