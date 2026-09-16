@@ -22,7 +22,7 @@
     "APK": {
       "repo": "https://github.com/ZYDRAXYL/DraconDex-APK.git",
       "ref": "main",
-      "commit": "c07402ef96df7b29d474fe71de61c0b982f94a29",
+      "commit": "3b6293cec8282955ff2c9c64fac498a4313ffe78",
       "paths": [
         "flutter"
       ]

@@ -5,6 +5,9 @@
 //   npm run build -- --local ../DraconDex-EXE   # from a checkout beside this one
 //   npm run build -- --skip-fetch       # reuse whatever is already in .app-src
 //
+// With --local, pass --commit KEY=SHA per source (e.g. --commit APK=<sha>):
+// one assembled tree cannot say which commit each repo contributed.
+//
 // The mobile lane needs a Flutter SDK; without one it is skipped (loudly) and
 // the rest of the site still builds.
 import { execFileSync } from 'node:child_process';
@@ -19,7 +22,12 @@ const step = (script, args = []) => execFileSync(process.execPath, [path.join(ro
 
 if (!argv.includes('--skip-fetch')) {
   const local = argOf('--local');
-  step('fetch-app.mjs', local ? ['--local', local] : (argOf('--ref') ? ['--ref', argOf('--ref')] : []));
+  // --commit is repeatable, so it is collected rather than read with argOf.
+  const commitArgs = argv.flatMap((a, i) => (a === '--commit' ? ['--commit', argv[i + 1]] : []));
+  step('fetch-app.mjs', [
+    ...(local ? ['--local', local] : (argOf('--ref') ? ['--ref', argOf('--ref')] : [])),
+    ...commitArgs,
+  ]);
 } else if (!fs.existsSync(path.join(root, '.app-src'))) {
   console.error('[build] --skip-fetch was given but .app-src does not exist');
   process.exit(1);

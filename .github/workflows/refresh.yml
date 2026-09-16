@@ -71,7 +71,14 @@ jobs:
           path: .apk-checkout
 
       - name: Assemble the source tree
+        id: sources
         run: |
+          # Recorded before the move: once flutter/ is lifted out of the APK
+          # checkout it carries no git metadata, and the assembled tree's own
+          # HEAD is EXE's. fetch-app.mjs is told both explicitly rather than
+          # left to infer one commit for two repos.
+          echo "exe=$(git -C .app-checkout rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "apk=$(git -C .apk-checkout rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           rm -rf .app-checkout/flutter
           mv .apk-checkout/flutter .app-checkout/flutter
           test -f .app-checkout/electron/main.js || { echo "::error::DraconDex-EXE checkout has no electron/main.js"; exit 1; }
@@ -93,7 +100,10 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Build both lanes
-        run: npm run build -- --local .app-checkout
+        run: |
+          npm run build -- --local .app-checkout \
+            --commit EXE=${{ steps.sources.outputs.exe }} \
+            --commit APK=${{ steps.sources.outputs.apk }}
 
       - name: Install Chromium
         run: npx --yes playwright@$(node -p "require('playwright-core/package.json').version") install --with-deps chromium
@@ -109,8 +119,8 @@ jobs:
           body: |
             Rebuilt `dist/` from:
 
-            - `ZYDRAXYL/DraconDex-EXE@${{ inputs.exe_ref }}` — the `/d/` desktop lane
-            - `ZYDRAXYL/DraconDex-APK@${{ inputs.apk_ref }}` — the `/m/` phone and `/t/` tablet lanes
+            - `ZYDRAXYL/DraconDex-EXE@${{ inputs.exe_ref }}` (`${{ steps.sources.outputs.exe }}`) — the `/d/` desktop lane
+            - `ZYDRAXYL/DraconDex-APK@${{ inputs.apk_ref }}` (`${{ steps.sources.outputs.apk }}`) — the `/m/` phone and `/t/` tablet lanes
 
             All three lanes were driven in a real browser by `npm run verify`
             before this PR was opened — see the workflow run for the screenshots.
