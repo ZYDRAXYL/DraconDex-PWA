@@ -89,12 +89,16 @@ try {
     await page.locator('[onclick="welcomeCreateNexus()"]').first().click();
     await page.waitForSelector('#nx-name', { timeout: 10000 });
     await page.fill('#nx-name', 'Verify Nexus');
-    // The create form offers a guided tour, on by default, whose overlay would
-    // swallow every click that follows. A real user can take it; this run
-    // wants the app underneath it.
-    if (await page.locator('#nx-guide').count()) await page.uncheck('#nx-guide');
+    // Since Procress 25 that is the Create Nexus page (?createNexus=1, opened
+    // in place of the desktop's child window — shim/entry.js). It offers App
+    // Docs and a guided tour whose overlay would swallow every click that
+    // follows. A real user can take it; this run wants the app underneath it.
+    check('New Nexus opens the Create Nexus page in place', /[?&]createNexus=1/.test(page.url()), page.url());
+    for (const box of ['#cn-tour', '#cn-appdocs', '#nx-guide']) {
+      if (await page.locator(box).count() && await page.locator(box).isChecked()) await page.uncheck(box);
+    }
     await shot('04-new-nexus');
-    await page.locator('[onclick="createNexusSubmit()"]').click();
+    await page.locator('#cn-create').click();
     await page.waitForTimeout(2500);
     check('creating a Nexus opens it', /[?&]nexus=\d+/.test(page.url()), page.url());
     await page.waitForSelector('#left-panel-inner .ph, #hub-body', { timeout: 20000 });

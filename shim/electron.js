@@ -1,4 +1,5 @@
 'use strict';
+import vfs from './vfs.js';
 // Electron's main-process API, reduced to what electron/main.js touches on the
 // way to registering its IPC handlers. Same idea as the run-dracondex
 // web-driver harness upstream, which runs the real main.js against a stubbed
@@ -105,7 +106,22 @@ export const shell = {
   // promise as "couldn't open" and toasts, which is the honest outcome.
   showItemInFolder: (p) => { console.warn('[shell] showItemInFolder is not available in the web build:', p); },
   openPath: async (p) => { console.warn('[shell] openPath is not available in the web build:', p); return 'unsupported'; },
+  // Deleting a Nexus offers to trash its Locate folder (Procress 20). That
+  // folder only ever existed on the virtual disk, which has no recycle bin:
+  // the user asked for it gone, so it goes.
+  trashItem: async (p) => {
+    if (!vfs.exists(p)) throw Object.assign(new Error(`ENOENT: '${p}'`), { code: 'ENOENT' });
+    vfs.remove(p, true);
+  },
   beep: () => {},
+};
+
+// Procress 25 sizes its Create Nexus window from the screen; the in-page
+// version (shim/entry.js) never asks, but keep main.js's require resolvable.
+const workArea = () => ({ x: 0, y: 0, width: globalThis.innerWidth || 1280, height: globalThis.innerHeight || 800 });
+export const screen = {
+  getPrimaryDisplay: () => ({ workArea: workArea(), bounds: workArea() }),
+  getDisplayMatching: () => ({ workArea: workArea(), bounds: workArea() }),
 };
 
 export const nativeTheme = { shouldUseDarkColors: true, on: () => {} };
@@ -124,6 +140,6 @@ export const ipcRenderer = {
 };
 
 export default {
-  app, BrowserWindow, ipcMain, dialog, Menu, shell, protocol, nativeTheme, session,
+  app, BrowserWindow, ipcMain, dialog, Menu, shell, screen, protocol, nativeTheme, session,
   clipboard, contextBridge, ipcRenderer, ipcHandlers: handlers,
 };

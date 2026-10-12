@@ -377,6 +377,24 @@ export class Database {
     try { return st.get(params); } finally { st.finalize(); }
   }
 
+  // A JS scalar function, node-sqlite3-wasm's shape (arity = func.length).
+  // db/locate.js (Procress 20) registers one and calls it from TEMP triggers
+  // to learn which modules a write touched.
+  function(name, func, { deterministic = false } = {}) {
+    try {
+      this._db.createFunction({
+        name: String(name),
+        arity: func.length,
+        deterministic,
+        xFunc: (_ctx, ...args) => {
+          const r = func(...args.map((a) => (typeof a === 'bigint' ? toNumber(a) : a)));
+          return r === undefined ? null : r;
+        },
+      });
+    } catch (e) { rethrow(e); }
+    return this;
+  }
+
   // Nothing to write back: sqlite's pages are already on the virtual disk.
   // Kept because the bridge and older callers still call it.
   persist() {}

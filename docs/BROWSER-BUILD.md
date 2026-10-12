@@ -174,13 +174,18 @@ promise ของ `run()` แล้วคืนค่าเดิมเมื่
 | `window:openNexus` | เปิดแท็บใหม่ `?nexus=<id>` |
 | `window:openNexusReplace` | เปลี่ยน URL ของแท็บนี้ (Welcome → vault) |
 | `window:openWelcome` | `?welcome=1` |
+| `window:openCreateNexus` | เปลี่ยน URL ของแท็บนี้เป็น `?createNexus=1` (Procress 25) — บนเดสก์ท็อปเป็นหน้าต่างลูกแบบ modal ซึ่งเบราว์เซอร์เปิดไม่ได้ จึงเปิดหน้าเดิมแทนที่ (boot.js วาดหน้า Create Nexus จาก query นี้อยู่แล้ว) และจำ URL ก่อนหน้าไว้ใน `sessionStorage` |
+| `window:createNexusDone` | มี `nexusId` ที่มีอยู่จริง → `location.replace(?nexus=<id>)` แบบเดียวกับ `openNexusReplace` · Cancel / ✕ / Esc → กลับ URL ที่จำไว้ (ไม่มีก็ `?welcome=1`) · ใช้ `replace` เพื่อให้ปุ่ม Back ไม่กลับไปฟอร์มที่ใช้แล้ว |
 | `window:openBuilderTab` | แท็บใหม่ `?nexus&tab&popup=1` |
 | `window:toggleMaximize` | fullscreen ของเบราว์เซอร์ |
 | `window:minimize` / `close` | ไม่ทำอะไร (ปุ่มถูกซ่อนด้วย `web.css`) |
 | `window:moveTabToMain` | คืน `false` — ไม่มี IPC ข้ามแท็บ |
 | `update:check` | ตอบ "เป็นเวอร์ชันล่าสุด" — service worker อัปเดตเองอยู่แล้ว |
 
-URL เปล่า (ไม่มี `?welcome=` และไม่มี `?nexus=`) ไม่ใช่สถานะที่แอปมี — บนเดสก์ท็อป
+`window:devInfo` (Procress 22, gallery สำหรับ dev) ไม่ต้อง override — handler
+ของ main.js ตอบ `{ dev: false }` เพราะ `app.isPackaged` เป็น `true` ที่นี่
+
+URL เปล่า (ไม่มี `?welcome=`, `?nexus=` หรือ `?createNexus=`) ไม่ใช่สถานะที่แอปมี — บนเดสก์ท็อป
 main.js เป็นคนตัดสินใจแล้วส่งมาเป็น query string หน้าเว็บจึงต้องตัดสินใจแทน
 ก่อนสคริปต์ renderer ตัวแรกจะอ่าน `location.search` (ทำใน `shim/entry.js`)
 
@@ -214,6 +219,7 @@ main.js เป็นคนตัดสินใจแล้วส่งมาเ
 | Reveal in folder / เปิดด้วยแอปอื่น | ไม่มี OS file manager ให้เรียก |
 | ไฟล์ที่ import ยังลิงก์กับพาธเดิมบนดิสก์ | เบราว์เซอร์ไม่ให้พาธจริง ไฟล์จึงถูก "คัดลอกเข้ามา" แทน |
 | Cloud Sync | ปิดทั้งโปรเจกต์อยู่แล้วตั้งแต่ต้นทาง ไม่ใช่ข้อจำกัดของเว็บ |
+| Locate Nexus (Procress 20) ในความหมาย "โฟลเดอร์จริงบนดิสก์" | โฟลเดอร์ของ Nexus ถูกสร้างและ mirror ลง **virtual disk** (`/ddx/home/Documents/DraconDex/<ชื่อ>`) ทำงานได้ แต่ผู้ใช้เปิดดูใน OS ไม่ได้ · `fs.watch` ไม่มี (`shim/fs.js` โยน `ERR_FEATURE_UNAVAILABLE_ON_PLATFORM` ซึ่ง `db/locate.js` อ่านว่า "ไม่มี watcher" แล้วเดินทั้งโฟลเดอร์ทุก sync — ไม่มีใครเขียน virtual disk นอกจากหน้าเว็บเอง) · change tracking ใช้ได้ (`Database.function` ใน `shim/sqlite.js` → `createFunction` ของ sqlite-wasm) · `shell.trashItem` ลบโฟลเดอร์ออกจาก virtual disk (ไม่มีถังขยะ) |
 
 ### DDX Transfer ใช้ได้ — และเหตุผลที่ Google login ใช้ไม่ได้คือเหตุผลเดียวกัน
 

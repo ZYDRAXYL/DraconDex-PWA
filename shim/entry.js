@@ -34,7 +34,10 @@ import { installDialogs, drainDownloads } from './dialogs.js';
 // query string. The page has to make that same choice for itself, before any
 // renderer script reads location.search.
 const params = new URLSearchParams(location.search);
-if (!params.has('welcome') && !params.has('nexus')) {
+// ?createNexus=1 is the third window kind (Procress 25), and it carries no
+// vault either; adding welcome=1 to it would change nothing boot.js reads, but
+// keep the URL saying what the page is.
+if (!params.has('welcome') && !params.has('nexus') && !params.has('createNexus')) {
   params.set('welcome', '1');
   history.replaceState(null, '', `${location.pathname}?${params}`);
 }
@@ -71,6 +74,28 @@ const OVERRIDES = {
     await persistAll();
     window.open(withParams({ nexus: nexusId, tab: tabKey, popup: '1' }), '_blank');
   },
+  // Procress 25's Create Nexus window is a modal child BrowserWindow on the
+  // desktop. A page cannot open a second OS window that blocks this one, so
+  // the same page (?createNexus=1, which boot.js already renders as that
+  // window) opens in place, and where it came from is remembered for Cancel.
+  'window:openCreateNexus': async () => {
+    try { sessionStorage.setItem(CREATE_RETURN_KEY, location.href); } catch (_) { /* Cancel falls back to Welcome */ }
+    await persistAll();
+    location.href = withParams({ createNexus: '1' });
+  },
+  // Its answer: a Nexus id opens that vault here, like welcomeOpenNexus /
+  // window:openNexusReplace; anything else (Cancel, ✕, Esc) goes back to the
+  // page that asked. replace(), so Back never lands on a spent form.
+  'window:createNexusDone': async (payload) => {
+    let back = null;
+    try { back = sessionStorage.getItem(CREATE_RETURN_KEY); sessionStorage.removeItem(CREATE_RETURN_KEY); } catch (_) {}
+    await persistAll();
+    const nexusId = Number(payload?.nexusId);
+    const exists = Number.isInteger(nexusId) && nexusId > 0 && !!(await ipcHandlers.get('nexus:get')?.({ sender: null }, nexusId));
+    if (exists) location.replace(withParams({ nexus: nexusId }));
+    else location.replace(back && new URL(back).origin === location.origin ? back : withParams({ welcome: '1' }));
+    return true;
+  },
   // Relaying a tab back needs a second live window to send to; there is no
   // cross-tab IPC here, and the renderer already handles "no main window".
   'window:moveTabToMain': () => false,
@@ -89,6 +114,8 @@ const OVERRIDES = {
   'pkg:catalog': () => ({ ok: false, code: 'network', error: 'packages are not available in the browser build' }),
   'pkg:install': () => ({ ok: false, code: 'network', error: 'packages are not available in the browser build' }),
 };
+
+const CREATE_RETURN_KEY = 'ddx:createNexusReturn';
 
 let markReady;
 const ready = new Promise((resolve) => { markReady = resolve; });
