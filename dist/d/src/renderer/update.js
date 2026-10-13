@@ -49,7 +49,7 @@ function updateTitlebarIndicator() {
 // ran in this renderer, which holds the whole window.api surface.) The two
 // text-context interpolations below still go through x().
 function showUpdateModal(r) {
-  openModal(`☁ ${t('updateAvailableTitle')}`, `
+  openModal(t('updateAvailableTitle'), `
     <div class="modal-hint">${I.info}<span>${t('updateAvailableHint')} ${x(r.version)}</span></div>
     ${r.notes ? `<div class="modal-hint"><span>${x(r.notes)}</span></div>` : ''}
     <div class="mfoot">
@@ -95,7 +95,8 @@ function settingVersionsBodyHtml() {
     <label style="margin-top:14px;display:block">
       <input type="checkbox" ${_lastAutoCheck ? 'checked' : ''} onchange="settingVersionsAutoCheckToggle(this.checked)">
       ${t('updateAutoCheck')}
-    </label>`;
+    </label>
+    <div class="setting-credit" data-no-i18n>DraconDex · Created by LDKTC</div>`;
 }
 async function settingVersionsCheckClick() {
   syncBtnBusy('#setting-versions-check-btn', true);

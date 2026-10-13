@@ -7,3 +7,5 @@ node_modules/
 .verify/
 *.log
 .DS_Store
+# Ad-hoc screenshots/notes from a session (lane checks beyond tools/verify.mjs).
+.tmp/

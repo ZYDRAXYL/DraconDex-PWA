@@ -83,7 +83,24 @@ function applyUiSettings(){
     if (uistyleVars && uistyleVars[tok]) document.body.style.setProperty(tok, uistyleVars[tok]);
     else document.body.style.removeProperty(tok);
   }
+  // Procress 23: a uistyle package may carry the glass group (all four or
+  // none — main refused anything else). Set, it turns css/glass.css on for
+  // that package (body[data-glass]); the built-in glass style needs neither.
+  const pkgGlass = !!uistyleVars && CUSTOM_GLASS_TOKENS.every(tok => uistyleVars[tok]);
+  delete document.body.dataset.glassTint; // core/glass.js's raise, re-judged below
+  for (const tok of CUSTOM_GLASS_TOKENS) {
+    if (pkgGlass) document.body.style.setProperty(tok, uistyleVars[tok]);
+    else document.body.style.removeProperty(tok);
+  }
+  if (pkgGlass) document.body.dataset.glass = '';
+  else delete document.body.dataset.glass;
+  if (S.settings.reduceTransparency) document.body.dataset.reduceTransparency = '';
+  else delete document.body.dataset.reduceTransparency;
+  if (typeof glassSync === 'function') glassSync();
+  if (typeof systemGlassSync === 'function') systemGlassSync();
   document.documentElement.style.setProperty('--fsc', String((S.settings.fontScale || 100) / 100));
+  // Per-area overrides are global scale × area %, so they follow the global one.
+  applyAreaScales();
   // Process 7 part 1: speed preset for the toggle-animation keyframes below
   // (nav-hub.css/inspector.css) — a single token so every consumer picks up
   // a speed change live, same idiom as --fsc/--ui-scale.
@@ -110,16 +127,23 @@ function setUiSetting(key, value){
   if(key === 'theme' && !UI_THEME_OPTIONS.includes(value) && !isCustomTheme) return;
   if(key === 'nameMode' && !['unique','classic'].includes(value)) return;
   if(key === 'uiStyle' && !UI_STYLE_OPTIONS.includes(value)) return;
+  if(key === 'reduceTransparency') value = value === true || value === 'true';
+  if(key === 'systemGlass') value = value === true || value === 'true';
   if(key === 'fontScale'){
     value = Math.min(130, Math.max(80, Math.round(Number(value) || 100)));
   }
   if(key === 'language' && !UI_LANGUAGE_OPTIONS.includes(value)) return;
+  // Procress 19 F8: a language is its own file now — fetch it first, then apply
+  // as if it had always been there. Callers that re-render after this (the
+  // welcome wizard) get the promise to wait on.
+  if(key === 'language' && !i18nLoaded(value)) return i18nLoad(value).then(() => setUiSetting(key, value));
   if(key === 'size'){
     value = Number(value);
     if(!Number.isFinite(value)) return;
     value = Math.min(UI_SIZE_MAX, Math.max(UI_SIZE_MIN, Math.round(value)));
   }
   S.settings[key] = value;
+  endSettingPreview(); // after the assignment, so its revert lands on the new value
   saveUiSettings();
   applyUiSettings();
   renderSettingsMenu();
@@ -142,6 +166,7 @@ function setFontScaleFromSlider(value){
   S.settings.fontScale = v;
   saveUiSettings();
   document.documentElement.style.setProperty('--fsc', String(v / 100));
+  applyAreaScales();
   const el = q('#settings-font-value');
   if(el) el.textContent = `${v}%`;
 }
@@ -205,10 +230,8 @@ function getBuiltinThemePalettes(){
 // Shared by the quick settings dropdown and the Preferences panel (Plan
 // part3) so both surfaces render the identical control from one source.
 function nameModeSegHtml(){
-  return `<div class="name-mode-seg">
-    <button class="btn ${S.settings.nameMode !== 'classic' ? 'btn-p' : 'btn-s'}" onclick="setUiSetting('nameMode','unique')" data-no-i18n>Unique</button>
-    <button class="btn ${S.settings.nameMode === 'classic' ? 'btn-p' : 'btn-s'}" onclick="setUiSetting('nameMode','classic')" data-no-i18n>Classic</button>
-  </div>
+  return `${segmentedHtml([{ value: 'unique', text: 'Unique' }, { value: 'classic', text: 'Classic' }],
+    S.settings.nameMode === 'classic' ? 'classic' : 'unique', { fill: true, noI18n: true, aria: t('moduleNameModeHint'), onclick: (v) => `setUiSetting('nameMode','${v}')` })}
   <div class="settings-hint">${t('moduleNameModeHint')}</div>`;
 }
 // Read-only compare view (Plan part2 #3) alongside the toggle above — every
@@ -293,33 +316,26 @@ function renderSettingsMenu(){
 // The quick popup's optional "Theme" extra (Tool toggle opt-in) — same swatch
 // list the old always-shown block used, just gated now instead of default.
 function quickThemeExtraHtml(){
+  // Procress 21: compact rows of the shared list (core/list.js), grouped dark /
+  // light / your own, each with its colours first. Hovering one previews it
+  // (data-preview-theme).
   const palettes = getThemePalettes();
-  const themeOptions = UI_THEME_OPTIONS.map(theme => {
-    const active = S.settings.theme === theme;
-    const swatches = THEME_SWATCH_VARS.map(v =>
-      `<i style="background:${palettes[theme]?.[v] || ''}"></i>`
-    ).join('');
-    const label = x(themeOptionLabel(theme));
-    return `<button type="button" class="theme-item${active?' active':''}" data-preview-theme="${x(theme)}" onclick="setUiSetting('theme','${theme}')" title="${label}">
-        <span class="theme-swatches">${swatches}</span>
-        <span class="theme-name" data-no-i18n>${label}</span>
-        ${active?`<span class="theme-check">${I.check}</span>`:''}
-      </button>`;
+  const row = (key, label, vars, preview, custom) => listRowHtml({ density: 'compact', title: label, tip: label,
+    lead: `<span class="theme-swatches">${(custom ? ['--bg','--raised','--accent','--accentH','--t1'] : THEME_SWATCH_VARS).map(v => `<i style="background:${x(vars?.[v] || (custom ? '#000' : ''))}"></i>`).join('')}</span>`,
+    state: { selected: S.settings.theme === key }, onclick: `setUiSetting('theme','${key}')`,
+    attrs: `${preview ? `data-preview-theme="${x(key)}" ` : ''}data-no-i18n`, trailing: S.settings.theme === key ? `<span class="theme-check">${I.check}</span>` : '' });
+  const tone = (theme) => (isLightColor(palettes[theme]?.['--bg'] || '#000') ? 'light' : 'dark');
+  const groups = [['dark', 'themeGroupDark'], ['light', 'themeGroupLight']].map(([id, key]) => {
+    const list = UI_THEME_OPTIONS.filter(th => tone(th) === id);
+    return list.length ? listGroupHtml({ list: 'quick-themes', id, title: t(key), count: list.length,
+      rows: list.map(th => row(th, themeOptionLabel(th), palettes[th], true, false)).join('') }) : '';
   }).join('');
-  const customOptions = (S.settings.customThemes || []).map(ct => {
-    const key = `custom:${ct.id}`;
-    const active = S.settings.theme === key;
-    const swatches = ['--bg','--raised','--accent','--accentH','--t1'].map(tok =>
-      `<i style="background:${x(ct.vars?.[tok] || '#000')}"></i>`).join('');
-    return `<button type="button" class="theme-item${active?' active':''}" onclick="setUiSetting('theme','${key}')" title="${x(ct.name)}">
-        <span class="theme-swatches">${swatches}</span>
-        <span class="theme-name" data-no-i18n>${x(ct.name)}</span>
-        ${active?`<span class="theme-check">${I.check}</span>`:''}
-      </button>`;
-  }).join('');
+  const customs = S.settings.customThemes || [];
+  const mine = customs.length ? listGroupHtml({ list: 'quick-themes', id: 'custom', title: t('themeGroupCustom'), count: customs.length,
+    rows: customs.map(ct => row(`custom:${ct.id}`, ct.name, ct.vars, false, true)).join('') }) : '';
   return `<div class="settings-group">
       <div class="settings-label">${t('theme')}</div>
-      <div class="theme-list">${themeOptions}${customOptions}</div>
+      ${listHtml({ list: 'quick-themes', aria: t('theme'), cls: 'theme-list', body: groups + mine })}
     </div>`;
 }
 
@@ -348,7 +364,7 @@ const SHORTCUT_HELP = [
 ];
 function openShortcutsModal(){
   const rows = SHORTCUT_HELP.map(([combo, key]) =>
-    `<div class="li"><span class="name">${t(key)}</span><span class="tag" data-no-i18n>${combo}</span></div>`).join('');
+    `<div class="li"><span class="name">${t(key)}</span><span class="chip" data-no-i18n>${combo}</span></div>`).join('');
   openModal(t('shortcuts'), `<div class="modal-data">${rows}</div>`);
 }
 
@@ -382,23 +398,82 @@ function currentPaletteVars(){
 }
 
 
-// Procress 16 part 7 — live preview (Office): pointing at a theme shows it
-// on the whole app; leaving puts the chosen one back. Nothing is saved
-// until it is clicked. (Language already previews this way.)
-let _themePreview = null;
+// Procress 16 part 7 — live preview (Office): pointing at a theme or a
+// language shows it; leaving puts the chosen one back. Nothing is saved until
+// it is clicked. The preview waits SETTING_PREVIEW_DELAY_MS of resting on an
+// item, with a progress ring at the cursor, so sweeping the pointer across
+// the grid doesn't flash every theme over the whole app.
+// Reverting re-applies S.settings rather than restoring a snapshot of <body>:
+// a click re-renders the cells, the old cell's mouseleave never fires, and a
+// snapshot taken before the click would later put the old theme back.
+const SETTING_PREVIEW_DELAY_MS = 3000;
+let _settingPreview = null; // { el, apply, revert, timer, shown }
+let _previewRing = null;
+
+function settingPreviewTarget(node){
+  const el = node?.closest?.('[data-preview-theme],[data-preview-lang]');
+  if (!el) return null;
+  const theme = el.dataset.previewTheme;
+  if (theme) {
+    if (theme === S.settings.theme || !UI_THEME_OPTIONS.includes(theme)) return null;
+    return { el, revert: applyUiSettings, apply: () => {
+      const keep = S.settings.theme;
+      S.settings.theme = theme;
+      applyUiSettings();
+      S.settings.theme = keep;
+    } };
+  }
+  const lang = el.dataset.previewLang;
+  if (lang === S.settings.language || !UI_LANGUAGE_OPTIONS.includes(lang)) return null;
+  return { el, apply: () => settingPreviewLang(lang), revert: () => settingPreviewLang(S.settings.language) };
+}
+
+function movePreviewRing(e){
+  _previewRing.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+}
+function showPreviewRing(e){
+  if (!_previewRing) {
+    _previewRing = document.createElement('div');
+    _previewRing.id = 'preview-ring';
+    _previewRing.innerHTML = '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8"/><circle class="pr-fill" cx="10" cy="10" r="8" pathLength="100"/></svg>';
+    // On <html>, not <body>: body carries the UI-size zoom, which would scale
+    // the ring and offset it from clientX/clientY.
+    document.documentElement.appendChild(_previewRing);
+  }
+  _previewRing.style.color = getComputedStyle(document.body).getPropertyValue('--accent');
+  _previewRing.style.setProperty('--pr-dur', `${SETTING_PREVIEW_DELAY_MS}ms`);
+  _previewRing.classList.remove('on');
+  void _previewRing.offsetWidth; // restart the fill animation
+  _previewRing.classList.add('on');
+  movePreviewRing(e);
+  document.addEventListener('mousemove', movePreviewRing);
+}
+function hidePreviewRing(){
+  _previewRing?.classList.remove('on');
+  document.removeEventListener('mousemove', movePreviewRing);
+}
+
+function endSettingPreview(){
+  const p = _settingPreview;
+  if (!p) return;
+  _settingPreview = null;
+  clearTimeout(p.timer);
+  hidePreviewRing();
+  if (p.shown) p.revert();
+}
+
 document.addEventListener('mouseover', (e) => {
-  const el = e.target.closest?.('[data-preview-theme]');
-  const want = el?.dataset.previewTheme;
-  if (!want || !UI_THEME_OPTIONS.includes(want) || String(want).startsWith('custom:') || String(want).startsWith('pkg:')) return;
-  const body = document.body;
-  if (!_themePreview) _themePreview = { theme: body.getAttribute('data-theme'), style: body.getAttribute('style') };
-  body.setAttribute('data-theme', want);
-  for (const n of [...body.style].filter((p) => p.startsWith('--'))) body.style.removeProperty(n); // a custom theme's inline tokens
-  el.addEventListener('mouseleave', () => {
-    if (!_themePreview) return;
-    const p = _themePreview;
-    _themePreview = null;
-    if (p.theme == null) document.body.removeAttribute('data-theme'); else document.body.setAttribute('data-theme', p.theme);
-    if (p.style == null) document.body.removeAttribute('style'); else document.body.setAttribute('style', p.style);
-  }, { once: true });
+  const next = settingPreviewTarget(e.target);
+  if (next && next.el === _settingPreview?.el) return; // still on the same item
+  endSettingPreview();
+  if (!next) return;
+  _settingPreview = next;
+  showPreviewRing(e);
+  next.timer = setTimeout(() => {
+    hidePreviewRing();
+    next.shown = true;
+    next.apply();
+  }, SETTING_PREVIEW_DELAY_MS);
 });
+// Pointer left the window entirely — no mouseover follows, so end it here.
+document.addEventListener('mouseout', (e) => { if (!e.relatedTarget) endSettingPreview(); });

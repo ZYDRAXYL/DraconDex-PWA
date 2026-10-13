@@ -94,7 +94,8 @@ function updateStatusBar(patch = {}) {
   if (!el) return;
   const st = S.settings.statusToggles || {};
   const parts = [];
-  if (S.nexus && st.vault !== false) parts.push(`<span class="sb-item sb-nexus" onclick="renderNexusHome()"><span class="nexus-vault-dot" style="${S.nexus.color_code ? `background:${x(S.nexus.color_code)}` : ''}"></span>${x(S.nexus.name)}</span>`);
+  // Procress 24: the Nexus's name opens its settings (Settings → This Nexus).
+  if (S.nexus && st.vault !== false) parts.push(`<span class="sb-item sb-nexus" role="button" tabindex="0" onclick="openSettingWindow('workspace','thisnexus')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" title="${x(t('settingPageThisNexus'))}"><span class="nexus-vault-dot" style="${S.nexus.color_code ? `background:${x(S.nexus.color_code)}` : ''}"></span><span data-no-i18n>${x(S.nexus.name)}</span></span>`);
   // UX-LAYOUT §6.7 (E4): left = the whole vault, right = this page, the way
   // VS Code splits its status bar. The breadcrumb that used to sit here is
   // gone — the page's address row already shows it, one place is enough.
@@ -113,6 +114,7 @@ function updateStatusBar(patch = {}) {
   if (live && _statusState.saveState && st.saveState !== false) parts.push(`<span class="sb-item sb-save">${x(_statusState.saveState)}</span>`);
   const right = [...pageRight];
   if (live && _statusState.words != null && st.words !== false) right.push(`<span class="sb-item">${_statusState.words} ${t('words')}</span>`);
+  right.push(`<span class="sb-item sb-credit" data-no-i18n>Created by LDKTC</span>`); // credit — always last, bottom-right corner
   el.innerHTML = `<div class="sb-left">${parts.join('')}</div><div class="sb-right">${right.join('')}</div>`;
   const ps = q('#main-inner .page-title .ph-save'); // Procress 18 part 1: next to the page name too
   if (ps) ps.textContent = live && st.saveState !== false ? (_statusState.saveState || '') : '';

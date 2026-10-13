@@ -40,10 +40,38 @@ export function rmSync(p, opts = {}) {
 export const unlinkSync = (p) => rmSync(p, {});
 export const rmdirSync = (p, opts) => rmSync(p, { recursive: true, force: true, ...opts });
 
-export function copyFileSync(src, dest) {
+export function copyFileSync(src, dest, mode = 0) {
   const bytes = vfs.read(src);
   if (!bytes) throw enoent(src);
+  if ((mode & constants.COPYFILE_EXCL) && vfs.exists(dest)) throw new FsError('EEXIST', `EEXIST: file already exists, '${dest}'`);
   vfs.write(dest, bytes.slice());
+}
+
+// Locate (Procress 20, db/locate.js) copies folders into a Nexus's folder.
+export function cpSync(src, dest, opts = {}) {
+  if (vfs.isFile(src)) {
+    if (opts.errorOnExist && vfs.exists(dest)) throw new FsError('EEXIST', `EEXIST: file already exists, '${dest}'`);
+    vfs.write(dest, vfs.read(src).slice());
+    return;
+  }
+  if (!vfs.isDir(src)) throw enoent(src);
+  if (!opts.recursive) throw new FsError('ERR_FS_EISDIR', `Recursive option is required to copy a directory: ${src}`);
+  vfs.mkdir(dest);
+  const prefix = src.replace(/\/+$/, '') + '/';
+  const to = dest.replace(/\/+$/, '') + '/';
+  for (const f of [...vfs.files.keys()]) {
+    if (!f.startsWith(prefix)) continue;
+    const out = to + f.slice(prefix.length);
+    if (opts.errorOnExist && vfs.exists(out)) throw new FsError('EEXIST', `EEXIST: file already exists, '${out}'`);
+    vfs.write(out, vfs.read(f).slice());
+  }
+}
+
+// Nothing outside the page writes to the virtual disk, so there is nothing to
+// watch. This is the code db/locate.js reads as "no watcher on this platform":
+// it stops asking and walks the folder on every sync instead.
+export function watch() {
+  throw new FsError('ERR_FEATURE_UNAVAILABLE_ON_PLATFORM', 'fs.watch is not available in the web build');
 }
 
 export function renameSync(src, dest) {
@@ -160,13 +188,13 @@ export const promises = {
   access: async (p) => { if (!vfs.exists(p)) throw enoent(p); },
 };
 
-export const constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 };
+export const constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1, COPYFILE_EXCL: 1 };
 export const createReadStream = () => { throw new FsError('ENOSYS', 'createReadStream is not available in the web build'); };
 export const createWriteStream = createReadStream;
 
 const fs = {
   existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, unlinkSync, rmdirSync,
-  copyFileSync, renameSync, statSync, lstatSync, statfsSync, readdirSync, realpathSync,
+  copyFileSync, cpSync, watch, renameSync, statSync, lstatSync, statfsSync, readdirSync, realpathSync,
   openSync, readSync, writeSync, fsyncSync, closeSync, promises, constants,
   createReadStream, createWriteStream, __setQuota,
 };
