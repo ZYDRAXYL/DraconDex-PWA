@@ -135,7 +135,7 @@ const router = `<!DOCTYPE html>
 </head>
 <body>
 <div class="wrap">
-  <img class="logo" src="src/assets/brand/DraconDex_WhiteOut.png" alt="DraconDex">
+  <img class="logo" src="src/assets/brand/web/DraconDex_Color.webp" alt="DraconDex">
   <h1>DraconDex</h1>
   <p>เลือกเวอร์ชันที่เหมาะกับอุปกรณ์ของคุณ — ข้อมูลทั้งหมดเก็บอยู่ในเครื่องนี้เท่านั้น</p>
   <div id="status"></div>
@@ -254,7 +254,7 @@ const shell = [
   'manifest.webmanifest',
   'favicon.png',
   ...manifest.icons.map((i) => i.src),
-  'src/assets/brand/DraconDex_WhiteOut.png', // the router's logo
+  'src/assets/brand/web/DraconDex_Color.webp', // the router's logo (Procress 26: one logo, every theme)
 ].filter((f) => files[f]);
 
 const version = crypto.createHash('sha1').update(JSON.stringify(files)).digest('hex').slice(0, 12);
