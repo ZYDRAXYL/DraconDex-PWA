@@ -124,7 +124,7 @@ npm run verify
 npm run serve
 ```
 
-Requirements: **Node 22+** for the desktop lane, and the **Flutter SDK**
+Requirements: **Node 24+** (current LTS) for the desktop lane, and the **Flutter SDK**
 (3.44.4, matching DraconDex-EXE's own web workflow) for the mobile lane. Without
 Flutter the mobile lane is skipped with a warning and everything else still
 builds.
