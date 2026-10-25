@@ -86,7 +86,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       # The mobile lane is the Flutter web target of the same lib/ that ships on
       # Android and iOS; the version here tracks DraconDex-EXE's own web build.
