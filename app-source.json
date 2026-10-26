@@ -4,7 +4,7 @@
     "EXE": {
       "repo": "https://github.com/ZYDRAXYL/DraconDex-EXE.git",
       "ref": "main",
-      "commit": "8c11b687366c536ae7944725da85ac1b9c1c9b18",
+      "commit": "09c7e76cb3f2197176fcdbfe6a3e64ece594d01b",
       "paths": [
         "electron/index.html",
         "electron/main.js",
@@ -24,7 +24,7 @@
     "APK": {
       "repo": "https://github.com/ZYDRAXYL/DraconDex-APK.git",
       "ref": "main",
-      "commit": "4084ff29eb352763cba24943e91293961bd946a4",
+      "commit": "893e162dfd529e7039e8a035dc4342dd30168864",
       "paths": [
         "flutter"
       ]

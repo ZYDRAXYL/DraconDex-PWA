@@ -71,6 +71,11 @@ const nodeShims = {
   // main.js's ddx-file:// handler (never registered here; see shim/stream.js)
   stream: shim('stream.js'),
   'node:stream': shim('stream.js'),
+  // src/db/update.js's in-app installer (unreachable here; see the shims)
+  events: shim('events.js'),
+  'node:events': shim('events.js'),
+  child_process: shim('child_process.js'),
+  'node:child_process': shim('child_process.js'),
 };
 
 const result = await esbuild.build({
