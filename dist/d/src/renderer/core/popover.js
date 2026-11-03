@@ -20,7 +20,8 @@
 // runs once — a MutationObserver watches for the removal, so no close path
 // can forget it. Tab stays inside (focus trap). APK: DdxPopover / showDdxPopover.
 
-const POPOVER_MARGIN = 8;
+// Procress 30: 10 px from the window edge, for every box placed here
+const POPOVER_MARGIN = 10;
 
 // anchor: an Element, anything with getBoundingClientRect(), or a rect.
 function anchorRect(anchor) {
@@ -58,17 +59,25 @@ function floatingRect(r, w, h, vw, vh, placement = 'bottom-start', gap = null, m
   return { left: Math.round(left), top: Math.round(top), side: used };
 }
 
+// The zoom a floating box is drawn at. UI Size is CSS zoom on <body>
+// (core/settings.js): a box inside it is drawn zoom× its own px — its left,
+// top and size alike — while rects, clientX/Y and innerWidth are window px.
+// Procress 30: placing it in window px unconverted put every popup and menu
+// off the window at any UI Size but 100 % (125 %: 300 px past the right edge).
+const floatZoom = (el) => el?.currentCSSZoom || 1;
+
 function placeFloating(el, anchor, { placement = 'bottom-start', gap = null } = {}) {
   let r = anchorRect(anchor);
   // the anchor was re-rendered away since: keep to where it was
   if (r && anchor?.isConnected === false && el?._float) r = el._float.r;
   if (!el || !r) return;
+  const z = floatZoom(el);
   // taller than the window: cap it and let it scroll rather than run off-screen
   const room = window.innerHeight - 2 * POPOVER_MARGIN;
-  if (el.offsetHeight > room) { el.style.maxHeight = `${room}px`; el.style.overflowY = 'auto'; }
-  const p = floatingRect(r, el.offsetWidth, el.offsetHeight, window.innerWidth, window.innerHeight, placement, gap);
-  el.style.left = `${p.left}px`;
-  el.style.top = `${p.top}px`;
+  if (el.offsetHeight * z > room) { el.style.maxHeight = `${room / z}px`; el.style.overflowY = 'auto'; }
+  const p = floatingRect(r, el.offsetWidth * z, el.offsetHeight * z, window.innerWidth, window.innerHeight, placement, gap);
+  el.style.left = `${p.left / z}px`;
+  el.style.top = `${p.top / z}px`;
   el.dataset.side = p.side;
   floatFollowSize(el, { anchor, r: { left: r.left, top: r.top, right: r.right, bottom: r.bottom }, placement, gap, side: p.side });
 }
@@ -226,3 +235,34 @@ new MutationObserver((muts) => {
     if (n.nodeType === 1 && n._onClose) { const f = n._onClose; n._onClose = null; try { f(); } catch (e) { console.error(e); } }
   }
 }).observe(document.body || document.documentElement, { childList: true });
+
+// ═══ Pickers (APP src/design/no-modal, rule 5) ══════════════════════════════
+// Picking one thing — a link, a source, a file, a filter, which fields show —
+// opens beside what was clicked instead of over the whole window. Same
+// arguments as openModal() (title, body, { hint, footer, size, focus }), so a
+// picker moves over by its name; its own buttons' closeModal() closes it too
+// (core/ui.js). A picker that redraws itself (a filter list) reopens where it
+// was, not at its own button.
+let _pickerAnchor = null;
+let _lastPointer = null;
+document.addEventListener('pointerdown', (e) => { _lastPointer = { x: e.clientX, y: e.clientY }; }, true);
+
+function pickerAnchorNow() {
+  const ae = document.activeElement;
+  if (ae && ae !== document.body && !ae.closest('#modal-overlay')) {
+    const r = ae.getBoundingClientRect();
+    if (r.width || r.height) return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; // a snapshot: the button may be redrawn
+  }
+  return _lastPointer ? pointAnchor(_lastPointer.x, _lastPointer.y) : paletteAnchor();
+}
+
+function openPicker(title, body, opts = {}) {
+  const again = !!document.activeElement?.closest?.('.picker-pop') && _pickerAnchor;
+  _pickerAnchor = again ? _pickerAnchor : pickerAnchorNow();
+  const wide = opts.size === 'lg' || opts.size === 'xl';
+  const pop = openPopover(_pickerAnchor, `<div class="popover-head picker-head"><span>${x(tr(title))}</span>
+      <button type="button" class="btn btn-g btn-i" onclick="closeModal()" title="${x(t('close'))}" aria-label="${x(t('close'))}">${I.close}</button></div>
+    ${opts.hint ? modalHintHtml(opts.hint) : ''}<div class="picker-body">${body}</div>${opts.footer ? `<div class="mfoot">${opts.footer}</div>` : ''}`,
+  { cls: `picker-pop${wide ? ' picker-wide' : ''}`, aria: tr(title), focus: opts.focus || 'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])' });
+  return pop;
+}

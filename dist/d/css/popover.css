@@ -9,7 +9,7 @@
 .popover{
 	position:fixed;z-index:calc(var(--z-tooltip) + 200);background:var(--surface);border:1px solid var(--border);
 	border-radius:var(--r);box-shadow:var(--shadow-menu);
-	max-width:calc(100vw - 16px);
+	max-width:calc((100vw - 20px) / var(--ui-scale, 1));
 }
 .popover:focus{outline:none}
 /* sizes — a menu is md */
@@ -20,7 +20,7 @@
 /* Procress 26 part 2: the Create menu (hub/menus.js openKindPopup, size .popover-xl) shows every
    kind at once — up to three columns under its search box, a heading kept with
    its first row. It only scrolls when the window is too small for that. */
-.popover-xl{width:min(820px,calc(100vw - 16px));max-height:calc(100vh - 16px)}
+.popover-xl{width:min(820px,calc((100vw - 20px) / var(--ui-scale, 1)));max-height:calc((100vh - 20px) / var(--ui-scale, 1))}
 .popover-xl .kind-cols{columns:250px 3;column-gap:8px}
 .popover-xl .kind-cols > *{break-inside:avoid}
 .popover-xl .kind-cols > [data-kind-head]{break-after:avoid}
@@ -40,3 +40,9 @@
 }
 .ui-tip.on{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){.ui-tip{transition:none}}
+/* a picker beside what was clicked (core/popover.js openPicker, no-modal rule 5) */
+.picker-pop{width:360px;max-width:calc((100vw - 20px) / var(--ui-scale, 1));max-height:min(560px,calc((100vh - 20px) / var(--ui-scale, 1)));display:flex;flex-direction:column;padding:10px 12px}
+.picker-pop.picker-wide{width:min(640px,calc((100vw - 20px) / var(--ui-scale, 1)))}
+.picker-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 0 8px}
+.picker-body{overflow:auto;min-height:0;flex:1 1 auto}
+.picker-pop .mfoot{margin-top:8px}

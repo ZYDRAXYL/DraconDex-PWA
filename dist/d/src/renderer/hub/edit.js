@@ -116,7 +116,7 @@ function moduleHandleHtml(m, where = 'props') {
     const cur = S.handleDraft ?? m.handle ?? '';
     return `<input id="handle-${where}-${m.id}" class="rename-input module-handle-inp" value="${x(cur)}" placeholder="${x(t('moduleHandleHint'))}"
       data-no-i18n onclick="event.stopPropagation()" onblur="saveModuleHandle(${m.id},this.value)"
-      onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape'){cancelModuleHandleEdit()}">`;
+      onkeydown="event.stopPropagation();if(event.key==='Enter')this.blur();if(event.key==='Escape'){cancelModuleHandleEdit()}">`;
   }
   return m.handle
     ? `<button type="button" class="btn btn-g btn-sm module-handle" data-no-i18n title="${x(t('moduleHandle'))}" onclick="event.stopPropagation();startEditModuleHandle(${m.id},'${where}')">@${x(m.handle)}</button>`
@@ -126,7 +126,10 @@ function moduleHandleHtml(m, where = 'props') {
 const focusHandleInput = (id) => setTimeout(() => { const el = q(`#handle-${S.editingHandleWhere || 'props'}-${id}`); el?.focus(); el?.select(); }, 30);
 
 async function startEditModuleHandle(id, where = 'props') {
-  if (S.activeModuleNode?.id !== id) await openModuleNode(id);
+  // a Collector's handle is edited on its folder page, already open — opening
+  // the node would fold/unfold it in the tree instead
+  // 'nest' edits it in the tree row, where the menu was opened — nothing opens
+  if (where !== 'nest' && S.activeModuleNode?.id !== id && findModuleNode(id)?.kind !== 'collector') await openModuleNode(id);
   S.editingHandleId = id;
   S.editingHandleWhere = where;
   S.handleDraft = null;
