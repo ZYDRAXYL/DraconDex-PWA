@@ -49,7 +49,7 @@ function pbLinkResolve(l) {
 }
 
 const pbLinkLabel = (l, r = pbLinkResolve(l)) =>
-  String(l?.label || '').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, n, a) => a || n).trim() || r.name || r.host || (r.anchor ? `#${r.anchor}` : '—');
+  String(l?.label || '').replace(MD_WIKILINK_RE, (_, n, a) => { const [nm, al] = wikiLinkSplit(n, a); return al || wikiPathParse(nm)?.object || nm; }).trim() || r.name || r.host || (r.anchor ? `#${r.anchor}` : '—');
 
 // The links an option holds, cleaned: a link whose `to` is not one of the
 // shapes above is dropped (a newer template's kind, a hand-edited row).
@@ -104,7 +104,7 @@ function pbLinkCreate(name) {
   const folder = here ? (here.kind === 'collector' ? here.id : here.parent_id) : null;
   const folders = flattenModulesByKind(S.moduleTree, []).filter((m) => m.kind === 'collector');
   const kinds = MODULE_KINDS.filter((k) => k !== 'collector');
-  openModal(t('wlCreate').replace('{name}', name), `
+  openPicker(t('wlCreate').replace('{name}', name), `
     <div class="fg"><label for="wl-name">${t('name')}</label><input id="wl-name" value="${x(name)}"></div>
     <div class="fg"><label for="wl-kind">${t('wlKind')}</label><select id="wl-kind">${kinds.map((k) =>
       `<option value="${k}"${k === 'drafter' ? ' selected' : ''}>${x(kindLabel(k))}</option>`).join('')}</select></div>
