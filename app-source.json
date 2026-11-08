@@ -4,7 +4,7 @@
     "EXE": {
       "repo": "https://github.com/ZYDRAXYL/DraconDex-EXE.git",
       "ref": "main",
-      "commit": "697528522dc96b2da11fb8842fc7067461107e60",
+      "commit": "c550773e3830fa2a4bb2c70738de6516d733f2cb",
       "paths": [
         "electron/index.html",
         "electron/main.js",
